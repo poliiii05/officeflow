@@ -1,5 +1,5 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-
+import { DashboardPage } from '@/pages/DashboardPage'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { LandingPage } from '@/pages/LandingPage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -20,6 +20,10 @@ const router = createBrowserRouter([
       {
         path: '/register',
         element: <RegisterPage />,
+      },
+      {
+        path: '/dashboard',
+        element: <DashboardPage />,
       },
     ],
   },
