@@ -9,6 +9,8 @@ import {
   TicketCheck,
 } from 'lucide-react'
 
+import { Link } from 'react-router-dom'
+import { buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -65,11 +67,13 @@ export function LandingPage() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost">Login</Button>
-            <Button>
-              Get Started
-              <ArrowRight className="size-4" />
-            </Button>
+           <Link to="/login" className={buttonVariants({ variant: 'ghost' })}>
+             Login
+           </Link>
+
+           <Link to="/register" className={buttonVariants()}>
+            Get started
+            </Link>
           </div>
         </div>
       </header>
