@@ -9,17 +9,26 @@ export type AuthUser = {
   requester_type: 'employee' | 'visitor' | null
 }
 
-export function saveAuthSession(token: string, user: AuthUser) {
-  localStorage.setItem(AUTH_TOKEN_KEY, token)
-  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user))
+export function saveAuthSession(token: string, user: AuthUser, remember = true) {
+  clearAuthSession()
+
+  const storage = remember ? localStorage : sessionStorage
+  storage.setItem(AUTH_TOKEN_KEY, token)
+  storage.setItem(AUTH_USER_KEY, JSON.stringify(user))
+}
+
+export function getStoredToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY) ?? sessionStorage.getItem(AUTH_TOKEN_KEY)
 }
 
 export function getStoredUser() {
-  const user = localStorage.getItem(AUTH_USER_KEY)
+  const user = localStorage.getItem(AUTH_USER_KEY) ?? sessionStorage.getItem(AUTH_USER_KEY)
   return user ? (JSON.parse(user) as AuthUser) : null
 }
 
 export function clearAuthSession() {
   localStorage.removeItem(AUTH_TOKEN_KEY)
   localStorage.removeItem(AUTH_USER_KEY)
+  sessionStorage.removeItem(AUTH_TOKEN_KEY)
+  sessionStorage.removeItem(AUTH_USER_KEY)
 }

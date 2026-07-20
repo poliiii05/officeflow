@@ -1,6 +1,9 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-import { DashboardPage } from '@/pages/DashboardPage'
+
+import { GuestRoute } from '@/app/GuestRoute'
+import { ProtectedRoute } from '@/app/ProtectedRoute'
 import { AuthLayout } from '@/layouts/AuthLayout'
+import { DashboardPage } from '@/pages/DashboardPage'
 import { LandingPage } from '@/pages/LandingPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
@@ -11,19 +14,29 @@ const router = createBrowserRouter([
     element: <LandingPage />,
   },
   {
-    element: <AuthLayout />,
+    element: <ProtectedRoute />,
     children: [
-      {
-        path: '/login',
-        element: <LoginPage />,
-      },
-      {
-        path: '/register',
-        element: <RegisterPage />,
-      },
       {
         path: '/dashboard',
         element: <DashboardPage />,
+      },
+    ],
+  },
+  {
+    element: <GuestRoute />,
+    children: [
+      {
+        element: <AuthLayout />,
+        children: [
+          {
+            path: '/login',
+            element: <LoginPage />,
+          },
+          {
+            path: '/register',
+            element: <RegisterPage />,
+          },
+        ],
       },
     ],
   },

@@ -1,16 +1,78 @@
-// LoginPage.tsx
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ArrowRight, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react'
 
+import { loginUser, getApiErrorMessage } from '@/features/auth/auth-api'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { Checkbox } from '@/components/ui/checkbox'
+
+type LoginErrors = {
+  email?: string
+  password?: string
+  form?: string
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
 
 export function LoginPage() {
+  const navigate = useNavigate()
   const [showPassword, setShowPassword] = useState(false)
+  const [remember, setRemember] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errors, setErrors] = useState<LoginErrors>({})
+  const [form, setForm] = useState({
+    email: '',
+    password: '',
+  })
+
+  function validateForm() {
+    const nextErrors: LoginErrors = {}
+
+    if (!form.email.trim()) {
+      nextErrors.email = 'Email address is required.'
+    } else if (!isValidEmail(form.email)) {
+      nextErrors.email = 'Enter a valid email address.'
+    }
+
+    if (!form.password) {
+      nextErrors.password = 'Password is required.'
+    }
+
+    setErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!validateForm()) return
+
+    setIsSubmitting(true)
+    setErrors({})
+
+    try {
+      await loginUser(
+        {
+          email: form.email,
+          password: form.password,
+        },
+        remember
+      )
+
+      navigate('/dashboard')
+    } catch (error) {
+      setErrors({
+        form: getApiErrorMessage(error, 'Unable to login. Please try again.'),
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className="rounded-xl border bg-card p-6 shadow-sm sm:p-7">
@@ -22,13 +84,28 @@ export function LoginPage() {
         </p>
       </div>
 
-      <form className="space-y-4">
+      {errors.form ? (
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {errors.form}
+        </div>
+      ) : null}
+
+      <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Label htmlFor="email">Email address</Label>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input id="email" type="email" placeholder="name@example.com" className="pl-9" />
+            <Input
+              id="email"
+              type="email"
+              placeholder="name@example.com"
+              className="pl-9"
+              value={form.email}
+              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+              aria-invalid={Boolean(errors.email)}
+            />
           </div>
+          {errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
         </div>
 
         <div className="space-y-2">
@@ -38,6 +115,7 @@ export function LoginPage() {
               Forgot password?
             </Link>
           </div>
+
           <div className="relative">
             <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -45,27 +123,35 @@ export function LoginPage() {
               type={showPassword ? 'text' : 'password'}
               placeholder="Enter your password"
               className="px-9"
+              value={form.password}
+              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+              aria-invalid={Boolean(errors.password)}
             />
             <button
               type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowPassword((value) => !value)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
               {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
+          {errors.password ? <p className="text-xs text-destructive">{errors.password}</p> : null}
         </div>
 
         <div className="flex items-center gap-2">
-          <Checkbox id="remember" />
+          <Checkbox
+            id="remember"
+            checked={remember}
+            onCheckedChange={(checked) => setRemember(Boolean(checked))}
+          />
           <Label htmlFor="remember" className="text-sm font-normal text-muted-foreground">
             Keep me signed in on this device
           </Label>
         </div>
 
-        <Button className="w-full cursor-pointer" type="button">
-          Login
+        <Button className="w-full cursor-pointer" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Logging in...' : 'Login'}
           <ArrowRight className="size-4" />
         </Button>
       </form>
@@ -76,9 +162,9 @@ export function LoginPage() {
         <Separator className="flex-1" />
       </div>
 
-      <Button className="w-full cursor-pointer" variant="outline" type="button">
+      <Button className="w-full cursor-pointer" variant="outline" type="button" disabled>
         <Mail className="size-4" />
-        Continue with Google
+        Continue with Google soon
       </Button>
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
