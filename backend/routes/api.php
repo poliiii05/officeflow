@@ -1,10 +1,10 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\TicketController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\V1\TicketController;
-use App\Http\Controllers\Api\V1\AppointmentController;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', fn () => [
@@ -25,18 +25,17 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', fn (Request $request) => [
             'data' => $request->user(),
-            
         ]);
 
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::post('/auth/accept-terms', [AuthController::class, 'acceptTerms']);
-    });
 
         Route::apiResource('tickets', TicketController::class)
-        ->only(['index', 'store', 'show'])
-        ->middleware('throttle:60,1');
-        
+            ->only(['index', 'store', 'show'])
+            ->middleware('throttle:60,1');
+
         Route::apiResource('appointments', AppointmentController::class)
-        ->only(['index', 'store', 'show'])
-        ->middleware('throttle:60,1');
+            ->only(['index', 'store', 'show'])
+            ->middleware('throttle:60,1');
+    });
 });

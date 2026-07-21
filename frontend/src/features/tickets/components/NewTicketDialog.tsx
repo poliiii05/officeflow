@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Plus } from 'lucide-react'
+import { AlertCircle, FileText, Layers, Plus, Send, Tag } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -51,8 +51,9 @@ export function NewTicketDialog({ onCreated }: NewTicketDialogProps) {
       setCategory('Technical Support')
       setPriority('medium')
       setOpen(false)
-    } catch {
-      setError('Unable to create ticket. Please check your details and try again.')
+    } catch (error) {
+      console.error(error)
+      setError('Unable to create ticket. Please make sure you are logged in and the backend server is running.')
     } finally {
       setIsSubmitting(false)
     }
@@ -65,15 +66,20 @@ export function NewTicketDialog({ onCreated }: NewTicketDialogProps) {
         New ticket
       </DialogTrigger>
 
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Create new ticket</DialogTitle>
-          <DialogDescription>
-            Send a request to the office team and track its progress.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="!max-w-2xl overflow-hidden rounded-2xl p-0">
+        <div className="border-b bg-muted/30 px-6 py-5">
+          <DialogHeader>
+            <div className="mb-2 flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <FileText className="size-5" />
+            </div>
+            <DialogTitle className="text-xl">Create new ticket</DialogTitle>
+            <DialogDescription>
+              Send a request to the office team and track its progress.
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <form className="space-y-5 px-6 py-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <Label htmlFor="ticketSubject">Subject</Label>
             <Input
@@ -92,18 +98,22 @@ export function NewTicketDialog({ onCreated }: NewTicketDialogProps) {
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               placeholder="Describe the issue or request..."
+              className="min-h-28 resize-none"
               required
             />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-2">
-              <Label htmlFor="ticketDepartment">Department</Label>
+              <Label htmlFor="ticketDepartment" className="flex items-center gap-2">
+                <Layers className="size-4 text-muted-foreground" />
+                Department
+              </Label>
               <select
                 id="ticketDepartment"
                 value={department}
                 onChange={(event) => setDepartment(event.target.value)}
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                className="h-10 w-full cursor-pointer rounded-md border bg-background px-3 text-sm"
               >
                 <option>IT Support</option>
                 <option>Front Desk</option>
@@ -113,12 +123,15 @@ export function NewTicketDialog({ onCreated }: NewTicketDialogProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ticketCategory">Category</Label>
+              <Label htmlFor="ticketCategory" className="flex items-center gap-2">
+                <Tag className="size-4 text-muted-foreground" />
+                Category
+              </Label>
               <select
                 id="ticketCategory"
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                className="h-10 w-full cursor-pointer rounded-md border bg-background px-3 text-sm"
               >
                 <option>Technical Support</option>
                 <option>Document Request</option>
@@ -133,7 +146,7 @@ export function NewTicketDialog({ onCreated }: NewTicketDialogProps) {
                 id="ticketPriority"
                 value={priority}
                 onChange={(event) => setPriority(event.target.value as TicketPriority)}
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                className="h-10 w-full cursor-pointer rounded-md border bg-background px-3 text-sm"
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -143,10 +156,16 @@ export function NewTicketDialog({ onCreated }: NewTicketDialogProps) {
             </div>
           </div>
 
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? (
+            <div className="flex gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              <p>{error}</p>
+            </div>
+          ) : null}
 
-          <Button className="w-full cursor-pointer" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Creating...' : 'Create ticket'}
+          <Button className="h-11 w-full cursor-pointer" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Creating ticket...' : 'Create ticket'}
+            <Send className="size-4" />
           </Button>
         </form>
       </DialogContent>
