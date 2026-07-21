@@ -302,10 +302,17 @@ export function RegisterPage() {
         <Separator className="flex-1" />
       </div>
 
-      <Button className="w-full cursor-pointer" variant="outline" type="button" disabled>
-        <Mail className="size-4" />
-        Continue with Google soon
-      </Button>
+     <Button
+    className="w-full cursor-pointer"
+    variant="outline"
+    type="button"
+    onClick={() => {
+      window.location.replace(`${import.meta.env.VITE_API_URL}/auth/google/redirect`)
+    }}
+  >
+    <Mail className="size-4" />
+    Continue with Google
+  </Button>
 
       <p className="mt-5 text-center text-sm text-muted-foreground">
         Already have an account?{' '}

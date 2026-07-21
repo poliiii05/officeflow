@@ -14,15 +14,6 @@ const router = createBrowserRouter([
     element: <LandingPage />,
   },
   {
-    element: <ProtectedRoute />,
-    children: [
-      {
-        path: '/dashboard',
-        element: <DashboardPage />,
-      },
-    ],
-  },
-  {
     element: <GuestRoute />,
     children: [
       {
@@ -37,6 +28,15 @@ const router = createBrowserRouter([
             element: <RegisterPage />,
           },
         ],
+      },
+    ],
+  },
+  {
+    element: <ProtectedRoute />,
+    children: [
+      {
+        path: '/dashboard',
+        element: <DashboardPage />,
       },
     ],
   },

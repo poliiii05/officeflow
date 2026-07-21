@@ -63,3 +63,13 @@ export function getApiErrorMessage(error: unknown, fallback: string) {
 
   return fallback
 }
+
+export async function fetchCurrentUser() {
+  const response = await api.get<{ data: AuthUser }>('/me')
+  return response.data.data
+}
+
+export async function acceptTerms() {
+  const response = await api.post<{ data: { user: AuthUser } }>('/auth/accept-terms')
+  return response.data.data.user
+}

@@ -7,6 +7,7 @@ export type AuthUser = {
   email: string
   role: 'user' | 'staff' | 'super_admin'
   requester_type: 'employee' | 'visitor' | null
+  terms_accepted_at: string | null
 }
 
 export function saveAuthSession(token: string, user: AuthUser, remember = true) {
@@ -31,4 +32,16 @@ export function clearAuthSession() {
   localStorage.removeItem(AUTH_USER_KEY)
   sessionStorage.removeItem(AUTH_TOKEN_KEY)
   sessionStorage.removeItem(AUTH_USER_KEY)
+}
+
+export function saveAuthToken(token: string, remember = true) {
+  clearAuthSession()
+
+  const storage = remember ? localStorage : sessionStorage
+  storage.setItem(AUTH_TOKEN_KEY, token)
+}
+
+export function saveStoredUser(user: AuthUser) {
+  const storage = getStoredToken() ? localStorage : sessionStorage
+  storage.setItem(AUTH_USER_KEY, JSON.stringify(user))
 }
