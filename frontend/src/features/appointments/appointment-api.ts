@@ -58,3 +58,15 @@ export async function createAppointment(payload: CreateAppointmentPayload) {
 
   return response.data
 }
+
+export async function updateAppointmentStatus(
+  appointmentId: number,
+  status: AppointmentStatus
+) {
+  const response = await api.patch<{ data: Appointment; message: string }>(
+    `/appointments/${appointmentId}/status`,
+    { status }
+  )
+
+  return response.data
+}

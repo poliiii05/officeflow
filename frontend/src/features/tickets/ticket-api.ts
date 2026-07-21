@@ -59,3 +59,21 @@ export async function createTicket(payload: CreateTicketPayload) {
 
   return response.data
 }
+
+export async function updateTicketStatus(ticketId: number, status: TicketStatus) {
+  const response = await api.patch<{ data: Ticket; message: string }>(
+    `/tickets/${ticketId}/status`,
+    { status }
+  )
+
+  return response.data
+}
+
+export async function assignTicket(ticketId: number, assignedToId: number | null) {
+  const response = await api.patch<{ data: Ticket; message: string }>(
+    `/tickets/${ticketId}/assign`,
+    { assigned_to_id: assignedToId }
+  )
+
+  return response.data
+}
