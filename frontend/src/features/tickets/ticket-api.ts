@@ -1,0 +1,61 @@
+import { api } from '@/lib/api'
+
+export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
+export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent'
+
+export type Ticket = {
+  id: number
+  requester_id: number
+  assigned_to_id: number | null
+  ticket_number: string
+  subject: string
+  description: string
+  department: string
+  category: string
+  priority: TicketPriority
+  status: TicketStatus
+  resolved_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type TicketListParams = {
+  status?: string
+  priority?: string
+  department?: string
+  search?: string
+  page?: number
+  per_page?: number
+}
+
+export type CreateTicketPayload = {
+  subject: string
+  description: string
+  department: string
+  category: string
+  priority: TicketPriority
+}
+
+export type PaginatedResponse<T> = {
+  data: T[]
+  meta: {
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+  }
+}
+
+export async function getTickets(params: TicketListParams = {}) {
+  const response = await api.get<PaginatedResponse<Ticket>>('/tickets', {
+    params,
+  })
+
+  return response.data
+}
+
+export async function createTicket(payload: CreateTicketPayload) {
+  const response = await api.post<{ data: Ticket; message: string }>('/tickets', payload)
+
+  return response.data
+}
