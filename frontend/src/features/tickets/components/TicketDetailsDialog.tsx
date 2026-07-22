@@ -52,7 +52,7 @@ const priorityStyles: Record<string, string> = {
   urgent: 'border-red-200 bg-red-50 text-red-700',
 }
 
-type TicketDetailsMode = 'queue' | 'work' | 'readonly'
+type TicketDetailsMode = 'queue' | 'work' | 'readonly' | 'activity'
 
 type TicketDetailsDialogProps = {
   ticket: Ticket
@@ -60,6 +60,9 @@ type TicketDetailsDialogProps = {
   footerAction?: ReactNode
   isUpdating?: boolean
   onStatusChange?: (ticketId: number, status: TicketStatus) => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean
 }
 
 function formatStatus(status: string) {
@@ -72,8 +75,13 @@ export function TicketDetailsDialog({
   footerAction,
   isUpdating = false,
   onStatusChange,
+  open,
+  onOpenChange,
+  hideTrigger = false,
 }: TicketDetailsDialogProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = open ?? internalOpen
+  const setIsOpen = onOpenChange ?? setInternalOpen
   const [activities, setActivities] = useState<TicketActivity[]>([])
   const [reply, setReply] = useState('')
   const [isLoadingActivities, setIsLoadingActivities] = useState(false)
@@ -82,7 +90,7 @@ export function TicketDetailsDialog({
 
   const isUnassigned = ticket.assigned_to_id === null
   const showStaffControls = mode === 'work'
-  const showActivity = mode === 'work'
+const showActivity = mode === 'work' || mode === 'activity'
 
   useEffect(() => {
     if (!isOpen || !showActivity) return
@@ -134,7 +142,11 @@ export function TicketDetailsDialog({
 
     try {
       const response = await createTicketActivity(ticket.id, message)
-      setActivities((current) => [...current, response.data])
+     setActivities((current) =>
+    current.some((activity) => activity.id === response.data.id)
+    ? current
+    : [...current, response.data]
+)
       setReply('')
     } catch (error) {
       setActivityError(getApiErrorMessage(error, 'Unable to add reply.'))
@@ -145,10 +157,12 @@ export function TicketDetailsDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    {!hideTrigger ? (
       <DialogTrigger className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground">
         <Eye className="size-4" />
         View details
       </DialogTrigger>
+    ) : null}
 
       <DialogContent className="flex !max-w-3xl max-h-[90vh] flex-col overflow-hidden rounded-lg p-0">
         <div className="shrink-0 border-b bg-gradient-to-r from-sky-50 via-white to-emerald-50 px-6 py-5">

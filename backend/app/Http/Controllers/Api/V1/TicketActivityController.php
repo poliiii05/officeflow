@@ -8,6 +8,8 @@ use App\Models\Ticket;
 use App\Models\TicketActivity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Events\UserNotificationChanged;
+use App\Notifications\TicketReplyNotification;
 
 class TicketActivityController extends Controller
 {
@@ -49,6 +51,14 @@ class TicketActivityController extends Controller
         $activity->load(['user:id,name,email,role']);
 
         broadcast(new TicketActivityCreated($activity))->toOthers();
+
+        if ($isStaff && ! $activity->is_internal && $ticket->requester_id !== $user->id) {
+        $ticket->loadMissing('requester');
+
+        $ticket->requester?->notify(new TicketReplyNotification($activity));
+
+        broadcast(new UserNotificationChanged($ticket->requester_id))->toOthers();
+    }
 
         return response()->json([
             'data' => $activity,

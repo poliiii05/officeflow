@@ -7,6 +7,7 @@ import {
   Clock3,
   FileText,
   LogOut,
+  MailOpen,
   MessageSquareText,
   Plus,
   TicketCheck,
@@ -16,11 +17,11 @@ import { useNavigate } from 'react-router-dom'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { getAppointments, type Appointment } from '@/features/appointments/appointment-api'
@@ -28,6 +29,12 @@ import { AppointmentDetailsDialog } from '@/features/appointments/components/App
 import { BookAppointmentDialog } from '@/features/appointments/components/BookAppointmentDialog'
 import { getApiErrorMessage } from '@/features/auth/auth-api'
 import {
+  getNotifications,
+  markNotificationsAsRead,
+  type OfficeFlowNotification,
+} from '@/features/notifications/notification-api'
+import {
+  getTicket,
   getTicketActivities,
   getTickets,
   type Ticket,
@@ -69,69 +76,147 @@ function formatStatus(status: string) {
 export function DashboardPage() {
   const navigate = useNavigate()
   const user = getStoredUser()
+
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [recentActivities, setRecentActivities] = useState<TicketActivity[]>([])
+  const [notifications, setNotifications] = useState<OfficeFlowNotification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
- async function loadDashboardData() {
-  setIsLoading(true)
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
+  const [isSelectedTicketOpen, setIsSelectedTicketOpen] = useState(false)
+
+  async function loadNotifications() {
+    setIsLoadingNotifications(true)
+
+    try {
+      const response = await getNotifications()
+      setNotifications(response.data)
+      setUnreadCount(response.meta.unread_count)
+
+      return response
+    } finally {
+      setIsLoadingNotifications(false)
+    }
+  }
+
+  async function handleNotificationClick(notification: OfficeFlowNotification) {
+  const ticketId = notification.data.ticket_id
+
+  if (!ticketId) return
+
+  const existingTicket = tickets.find((ticket) => ticket.id === ticketId)
+
+  if (existingTicket) {
+    setSelectedTicket(existingTicket)
+    setIsSelectedTicketOpen(true)
+    return
+  }
 
   try {
-    const [ticketResponse, appointmentResponse] = await Promise.all([
-      getTickets({ per_page: 5 }),
-      getAppointments({ per_page: 5 }),
-    ])
-
-    setTickets(ticketResponse.data)
-    setAppointments(appointmentResponse.data)
-
-    const activityResponses = await Promise.all(
-      ticketResponse.data.slice(0, 3).map((ticket) => getTicketActivities(ticket.id))
-    )
-
-    const latestActivities = activityResponses
-      .flatMap((response) => response.data)
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      )
-      .slice(0, 4)
-
-    setRecentActivities(latestActivities)
-    setError('')
+    const response = await getTicket(ticketId)
+    setSelectedTicket(response.data)
+    setIsSelectedTicketOpen(true)
   } catch (error) {
-    setError(getApiErrorMessage(error, 'Unable to load your dashboard.'))
-  } finally {
-    setIsLoading(false)
+    setError(getApiErrorMessage(error, 'Unable to open notification ticket.'))
   }
 }
 
+  async function handleNotificationOpen() {
+    const response = await loadNotifications()
+    const currentUnreadCount = response?.meta.unread_count ?? 0
+
+    if (currentUnreadCount > 0) {
+      await markNotificationsAsRead()
+      setUnreadCount(0)
+      setNotifications((current) =>
+        current.map((notification) => ({
+          ...notification,
+          read_at: notification.read_at ?? new Date().toISOString(),
+        }))
+      )
+    }
+  }
+
+  async function loadDashboardData() {
+    setIsLoading(true)
+
+    try {
+      const [ticketResponse, appointmentResponse] = await Promise.all([
+        getTickets({ per_page: 5 }),
+        getAppointments({ per_page: 5 }),
+      ])
+
+      setTickets(ticketResponse.data)
+      setAppointments(appointmentResponse.data)
+
+      const activityResponses = await Promise.all(
+        ticketResponse.data.slice(0, 3).map((ticket) => getTicketActivities(ticket.id))
+      )
+
+      const latestActivities = activityResponses
+        .flatMap((response) => response.data)
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+        .slice(0, 4)
+
+      setRecentActivities(latestActivities)
+      setError('')
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'Unable to load your dashboard.'))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
     void loadDashboardData()
+    void loadNotifications()
   }, [])
 
   useEffect(() => {
-  const channel = echo.channel('officeflow.staff')
+    if (!user?.id) return
 
-  channel.listen('.ticket.changed', () => {
-    void loadDashboardData()
-  })
+    const channel = echo.channel(`officeflow.user.${user.id}`)
 
-  channel.listen('.appointment.changed', () => {
-    void loadDashboardData()
-  })
+    channel.listen('.notification.changed', () => {
+      void loadNotifications()
+    })
 
-  return () => {
-    channel.stopListening('.ticket.changed')
-    channel.stopListening('.appointment.changed')
-    echo.leaveChannel('officeflow.staff')
-  }
-}, [])
+    return () => {
+      channel.stopListening('.notification.changed')
+      echo.leaveChannel(`officeflow.user.${user.id}`)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    const channel = echo.channel('officeflow.staff')
+
+    channel.listen('.ticket.changed', () => {
+      void loadDashboardData()
+    })
+
+    channel.listen('.appointment.changed', () => {
+      void loadDashboardData()
+    })
+
+    return () => {
+      channel.stopListening('.ticket.changed')
+      channel.stopListening('.appointment.changed')
+      echo.leaveChannel('officeflow.staff')
+    }
+  }, [])
 
   const activeTickets = useMemo(
-    () => tickets.filter((ticket) => ticket.status === 'open' || ticket.status === 'in_progress').length,
+    () =>
+      tickets.filter(
+        (ticket) => ticket.status === 'open' || ticket.status === 'in_progress'
+      ).length,
     [tickets]
   )
 
@@ -145,7 +230,10 @@ export function DashboardPage() {
   )
 
   const resolvedTickets = useMemo(
-    () => tickets.filter((ticket) => ticket.status === 'resolved' || ticket.status === 'closed').length,
+    () =>
+      tickets.filter(
+        (ticket) => ticket.status === 'resolved' || ticket.status === 'closed'
+      ).length,
     [tickets]
   )
 
@@ -206,9 +294,78 @@ export function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" type="button" className="cursor-pointer bg-white">
-              <Bell className="size-4" />
-            </Button>
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open) void handleNotificationOpen()
+              }}
+            >
+              <DropdownMenuTrigger className="relative flex size-10 cursor-pointer items-center justify-center rounded-lg border bg-white shadow-xs hover:bg-accent hover:text-accent-foreground">
+                <Bell className="size-4" />
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-medium text-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                ) : null}
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end" className="w-80 p-0">
+                <div className="flex items-center justify-between border-b px-4 py-3">
+                  <p className="text-sm font-semibold text-foreground">
+                    Notifications
+                  </p>
+                  <MailOpen className="size-4 text-muted-foreground" />
+                </div>
+
+                {isLoadingNotifications ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    Loading notifications...
+                  </div>
+                ) : notifications.length ? (
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.map((notification) => (
+                      <DropdownMenuItem
+                        key={notification.id}
+                        onClick={() => void handleNotificationClick(notification)}
+                        className="cursor-pointer items-start gap-3 p-4"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span
+                            className={cn(
+                              'mt-1 size-2 shrink-0 rounded-full',
+                              notification.read_at ? 'bg-slate-300' : 'bg-red-500'
+                            )}
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">
+                              {notification.data.title ?? 'OfficeFlow update'}
+                            </p>
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                              {notification.data.message ??
+                                notification.data.ticket_subject ??
+                                'New update available.'}
+                            </p>
+                            {notification.data.ticket_number ? (
+                              <p className="mt-1 text-xs font-medium text-sky-700">
+                                {notification.data.ticket_number}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </DropdownMenuItem>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    No notifications yet.
+                  </div>
+                )}
+
+                <DropdownMenuSeparator className="m-0" />
+                <div className="px-4 py-3 text-xs text-muted-foreground">
+                  Staff replies and ticket updates will appear here.
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             <DropdownMenu>
               <DropdownMenuTrigger className="flex cursor-pointer items-center gap-2 rounded-lg border bg-background px-2 py-1.5">
@@ -216,7 +373,9 @@ export function DashboardPage() {
                   <AvatarFallback>{getInitials(user?.name)}</AvatarFallback>
                 </Avatar>
                 <div className="hidden text-left sm:block">
-                  <p className="text-sm font-medium leading-none">{user?.name ?? 'OfficeFlow User'}</p>
+                  <p className="text-sm font-medium leading-none">
+                    {user?.name ?? 'OfficeFlow User'}
+                  </p>
                   <p className="mt-1 text-xs text-muted-foreground">{user?.email}</p>
                 </div>
                 <ChevronDown className="size-4 text-muted-foreground" />
@@ -236,7 +395,10 @@ export function DashboardPage() {
       <section className="mx-auto max-w-7xl px-6 py-6">
         <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
           <div>
-            <Badge variant="secondary" className="mb-3 border border-sky-200 bg-sky-50 text-sky-700 capitalize">
+            <Badge
+              variant="secondary"
+              className="mb-3 border border-sky-200 bg-sky-50 text-sky-700 capitalize"
+            >
               {user?.requester_type ?? 'visitor'} account
             </Badge>
             <h1 className="text-2xl font-semibold">
@@ -282,7 +444,9 @@ export function DashboardPage() {
             <div className="flex items-center justify-between border-b bg-sky-50/70 px-5 py-4">
               <div>
                 <h2 className="font-semibold">Recent tickets</h2>
-                <p className="text-sm text-muted-foreground">Latest service requests from your account.</p>
+                <p className="text-sm text-muted-foreground">
+                  Latest service requests from your account.
+                </p>
               </div>
               <FileText className="size-5 text-sky-700" />
             </div>
@@ -303,7 +467,10 @@ export function DashboardPage() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium">{ticket.subject}</p>
-                        <Badge variant="secondary" className={cn('border-0 capitalize', statusStyles[ticket.status])}>
+                        <Badge
+                          variant="secondary"
+                          className={cn('border-0 capitalize', statusStyles[ticket.status])}
+                        >
                           {formatStatus(ticket.status)}
                         </Badge>
                         <Badge variant="outline" className="capitalize">
@@ -333,11 +500,15 @@ export function DashboardPage() {
             <section className="overflow-hidden rounded-lg border border-emerald-100 bg-white shadow-sm">
               <div className="border-b bg-emerald-50/70 px-5 py-4">
                 <h2 className="font-semibold">Upcoming appointments</h2>
-                <p className="text-sm text-muted-foreground">Your office visits and pending schedules.</p>
+                <p className="text-sm text-muted-foreground">
+                  Your office visits and pending schedules.
+                </p>
               </div>
 
               {isLoading ? (
-                <div className="px-5 py-8 text-sm text-muted-foreground">Loading appointments...</div>
+                <div className="px-5 py-8 text-sm text-muted-foreground">
+                  Loading appointments...
+                </div>
               ) : appointments.length ? (
                 appointments.map((appointment) => (
                   <article key={appointment.id} className="border-b px-5 py-4 last:border-b-0">
@@ -358,7 +529,8 @@ export function DashboardPage() {
                         </div>
 
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {appointment.appointment_number} - {new Date(appointment.scheduled_at).toLocaleString()}
+                          {appointment.appointment_number} -{' '}
+                          {new Date(appointment.scheduled_at).toLocaleString()}
                         </p>
 
                         <div className="mt-3">
@@ -375,7 +547,7 @@ export function DashboardPage() {
               )}
             </section>
 
-           <section className="overflow-hidden rounded-lg border border-violet-100 bg-white shadow-sm">
+            <section className="overflow-hidden rounded-lg border border-violet-100 bg-white shadow-sm">
               <div className="border-b bg-violet-50/80 px-5 py-4">
                 <div className="flex items-center gap-3">
                   <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
@@ -441,6 +613,22 @@ export function DashboardPage() {
             </section>
           </aside>
         </div>
+
+        {selectedTicket ? (
+  <TicketDetailsDialog
+    ticket={selectedTicket}
+    mode="activity"
+    open={isSelectedTicketOpen}
+    onOpenChange={(open) => {
+      setIsSelectedTicketOpen(open)
+
+      if (!open) {
+        setSelectedTicket(null)
+      }
+    }}
+    hideTrigger
+  />
+) : null}
       </section>
     </main>
   )

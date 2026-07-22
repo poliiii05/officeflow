@@ -115,6 +115,11 @@ export async function getTicketActivities(ticketId: number) {
   return response.data
 }
 
+export async function getTicket(ticketId: number) {
+  const response = await api.get<{ data: Ticket }>(`/tickets/${ticketId}`)
+  return response.data
+}
+
 export async function createTicketActivity(ticketId: number, message: string) {
   const response = await api.post<{ data: TicketActivity; message: string }>(
     `/tickets/${ticketId}/activities`,
