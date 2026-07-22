@@ -89,3 +89,37 @@ export async function assignTicket(ticketId: number, assignedToId: number | null
 
   return response.data
 }
+
+export type TicketActivity = {
+  id: number
+  ticket_id: number
+  user_id: number | null
+  type: 'message' | 'staff_reply' | 'requester_reply' | string
+  message: string
+  is_internal: boolean
+  created_at: string
+  updated_at: string
+  user?: {
+    id: number
+    name: string
+    email: string
+    role: 'user' | 'staff' | 'super_admin'
+  } | null
+}
+
+export async function getTicketActivities(ticketId: number) {
+  const response = await api.get<{ data: TicketActivity[] }>(
+    `/tickets/${ticketId}/activities`
+  )
+
+  return response.data
+}
+
+export async function createTicketActivity(ticketId: number, message: string) {
+  const response = await api.post<{ data: TicketActivity; message: string }>(
+    `/tickets/${ticketId}/activities`,
+    { message }
+  )
+
+  return response.data
+}

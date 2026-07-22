@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\TicketController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\StaffDashboardController;
+use App\Http\Controllers\Api\V1\TicketActivityController;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', fn () => [
@@ -53,5 +54,11 @@ Route::prefix('v1')->group(function () {
         
         Route::get('/staff/overview', [StaffDashboardController::class, 'overview'])
          ->middleware('throttle:180,1');
+
+        Route::get('/tickets/{ticket}/activities', [TicketActivityController::class, 'index'])
+        ->middleware('throttle:180,1');
+
+        Route::post('/tickets/{ticket}/activities', [TicketActivityController::class, 'store'])
+        ->middleware('throttle:60,1');
     });
 });

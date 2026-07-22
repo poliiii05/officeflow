@@ -626,11 +626,27 @@ async function handleClaimAppointment(appointmentId: number) {
                         </Button>
                     ) : null}
 
-                    <TicketDetailsDialog
+                    <div className="flex justify-start lg:justify-end">
+                      <TicketDetailsDialog
                         ticket={ticket}
+                        mode={activeView === 'mine' ? 'work' : activeView === 'unassigned' ? 'queue' : 'readonly'}
                         isUpdating={updatingKey === `ticket-${ticket.id}`}
-                        onStatusChange={handleTicketStatusChange}
-                    />
+                        onStatusChange={activeView === 'mine' ? handleTicketStatusChange : undefined}
+                        footerAction={
+                          activeView === 'unassigned' && ticket.assigned_to_id === null ? (
+                            <Button
+                              type="button"
+                              className="w-full cursor-pointer gap-2"
+                              disabled={updatingKey === `ticket-${ticket.id}`}
+                              onClick={() => void handleClaimTicket(ticket.id)}
+                            >
+                              <UserCheck className="size-4" />
+                              Claim ticket
+                            </Button>
+                          ) : undefined
+                        }
+                      />
+                    </div>
                     </div>
                 </article>
               ))

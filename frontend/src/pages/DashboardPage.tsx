@@ -27,7 +27,12 @@ import { getAppointments, type Appointment } from '@/features/appointments/appoi
 import { AppointmentDetailsDialog } from '@/features/appointments/components/AppointmentDetailsDialog'
 import { BookAppointmentDialog } from '@/features/appointments/components/BookAppointmentDialog'
 import { getApiErrorMessage } from '@/features/auth/auth-api'
-import { getTickets, type Ticket } from '@/features/tickets/ticket-api'
+import {
+  getTicketActivities,
+  getTickets,
+  type Ticket,
+  type TicketActivity,
+} from '@/features/tickets/ticket-api'
 import { NewTicketDialog } from '@/features/tickets/components/NewTicketDialog'
 import { TicketDetailsDialog } from '@/features/tickets/components/TicketDetailsDialog'
 import { api } from '@/lib/api'
@@ -66,27 +71,42 @@ export function DashboardPage() {
   const user = getStoredUser()
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [recentActivities, setRecentActivities] = useState<TicketActivity[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
-  async function loadDashboardData() {
-    setIsLoading(true)
+ async function loadDashboardData() {
+  setIsLoading(true)
 
-    try {
-      const [ticketResponse, appointmentResponse] = await Promise.all([
-        getTickets({ per_page: 5 }),
-        getAppointments({ per_page: 5 }),
-      ])
+  try {
+    const [ticketResponse, appointmentResponse] = await Promise.all([
+      getTickets({ per_page: 5 }),
+      getAppointments({ per_page: 5 }),
+    ])
 
-      setTickets(ticketResponse.data)
-      setAppointments(appointmentResponse.data)
-      setError('')
-    } catch (error) {
-      setError(getApiErrorMessage(error, 'Unable to load your dashboard.'))
-    } finally {
-      setIsLoading(false)
-    }
+    setTickets(ticketResponse.data)
+    setAppointments(appointmentResponse.data)
+
+    const activityResponses = await Promise.all(
+      ticketResponse.data.slice(0, 3).map((ticket) => getTicketActivities(ticket.id))
+    )
+
+    const latestActivities = activityResponses
+      .flatMap((response) => response.data)
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+      .slice(0, 4)
+
+    setRecentActivities(latestActivities)
+    setError('')
+  } catch (error) {
+    setError(getApiErrorMessage(error, 'Unable to load your dashboard.'))
+  } finally {
+    setIsLoading(false)
   }
+}
 
   useEffect(() => {
     void loadDashboardData()
@@ -355,18 +375,55 @@ export function DashboardPage() {
               )}
             </section>
 
-            <section className="rounded-lg border border-violet-100 bg-violet-50 p-5 shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
-                  <MessageSquareText className="size-4" />
-                </div>
-                <div>
-                  <h2 className="font-semibold">Request activity</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Staff updates will appear here once replies, notifications, and ticket comments are added.
-                  </p>
+           <section className="overflow-hidden rounded-lg border border-violet-100 bg-white shadow-sm">
+              <div className="border-b bg-violet-50/80 px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                    <MessageSquareText className="size-4" />
+                  </div>
+                  <div>
+                    <h2 className="font-semibold">Request activity</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Latest staff replies and request updates.
+                    </p>
+                  </div>
                 </div>
               </div>
+
+              {isLoading ? (
+                <div className="px-5 py-8 text-sm text-muted-foreground">Loading activity...</div>
+              ) : recentActivities.length ? (
+                <div className="divide-y">
+                  {recentActivities.map((activity) => (
+                    <article key={activity.id} className="px-5 py-4">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                          <MessageSquareText className="size-4" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-medium">
+                              {activity.user?.name ?? 'OfficeFlow'}
+                            </p>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(activity.created_at).toLocaleString()}
+                            </span>
+                          </div>
+
+                          <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                            {activity.message}
+                          </p>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-5 py-8 text-sm text-muted-foreground">
+                  Staff replies and ticket updates will appear here.
+                </div>
+              )}
             </section>
 
             <section className="rounded-lg border border-amber-100 bg-amber-50 p-5 shadow-sm">
