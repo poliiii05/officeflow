@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Events\AppointmentActivityCreated;
+use App\Events\AppointmentChanged;
+use App\Events\UserNotificationChanged;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
+use App\Models\AppointmentActivity;
+use App\Notifications\AppointmentReplyNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Events\AppointmentChanged;
+
 class AppointmentController extends Controller
 {
     public function index(Request $request): JsonResponse
@@ -29,13 +34,10 @@ class AppointmentController extends Controller
             ->when($user->role !== 'user', function ($query) use ($validated) {
                 match ($validated['queue'] ?? 'all') {
                     'pending' => $query->where('status', 'pending'),
-
                     'scheduled' => $query->where('status', 'scheduled'),
-
                     'completed_today' => $query
                         ->where('status', 'completed')
                         ->whereDate('updated_at', now()->toDateString()),
-
                     default => $query,
                 };
             })
@@ -127,12 +129,85 @@ class AppointmentController extends Controller
 
         $appointment->update($updates);
 
-        broadcast(new AppointmentChanged($appointment->fresh(), 'status_updated'))->toOthers();
+        $freshAppointment = $appointment->fresh();
+
+        $this->recordVisibleActivity(
+            $request,
+            $freshAppointment,
+            'status_update',
+            'Appointment status changed to '.$validated['status'].'.'
+        );
+
+        broadcast(new AppointmentChanged($freshAppointment, 'status_updated'))->toOthers();
 
         return response()->json([
             'data' => $appointment->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
             'message' => 'Appointment status updated successfully.',
         ]);
+    }
+
+    public function assign(Request $request, Appointment $appointment): JsonResponse
+    {
+        $this->ensureStaffUser($request);
+
+        if (
+            $appointment->assigned_to_id !== null &&
+            $appointment->assigned_to_id !== $request->user()->id
+        ) {
+            abort(409, 'This appointment has already been claimed by another staff member.');
+        }
+
+        if (! in_array($appointment->status, ['pending', 'scheduled'], true)) {
+            abort(422, 'Only pending or scheduled appointments can be claimed.');
+        }
+
+        $appointment->update([
+            'assigned_to_id' => $request->user()->id,
+            'status' => 'scheduled',
+        ]);
+
+        $freshAppointment = $appointment->fresh();
+
+        $this->recordVisibleActivity(
+            $request,
+            $freshAppointment,
+            'assigned',
+            'Appointment was claimed and scheduled by '.$request->user()->name.'.'
+        );
+
+        broadcast(new AppointmentChanged($freshAppointment, 'assigned'))->toOthers();
+
+        return response()->json([
+            'data' => $appointment->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
+            'message' => 'Appointment claimed successfully.',
+        ]);
+    }
+
+    private function recordVisibleActivity(
+        Request $request,
+        Appointment $appointment,
+        string $type,
+        string $message
+    ): void {
+        $activity = AppointmentActivity::create([
+            'appointment_id' => $appointment->id,
+            'user_id' => $request->user()->id,
+            'type' => $type,
+            'message' => $message,
+            'is_internal' => false,
+        ]);
+
+        $activity->load(['user:id,name,email,role']);
+
+        broadcast(new AppointmentActivityCreated($activity))->toOthers();
+
+        if ($appointment->requester_id !== $request->user()->id) {
+            $appointment->loadMissing('requester');
+
+            $appointment->requester?->notify(new AppointmentReplyNotification($activity));
+
+            broadcast(new UserNotificationChanged($appointment->requester_id))->toOthers();
+        }
     }
 
     private function generateAppointmentNumber(): string
@@ -150,32 +225,4 @@ class AppointmentController extends Controller
             abort(403, 'Only staff or super admin users can perform this action.');
         }
     }
-
-    public function assign(Request $request, Appointment $appointment): JsonResponse
-{
-    $this->ensureStaffUser($request);
-
-    if (
-        $appointment->assigned_to_id !== null &&
-        $appointment->assigned_to_id !== $request->user()->id
-    ) {
-        abort(409, 'This appointment has already been claimed by another staff member.');
-    }
-
-    if (! in_array($appointment->status, ['pending', 'scheduled'], true)) {
-        abort(422, 'Only pending or scheduled appointments can be claimed.');
-    }
-
-    $appointment->update([
-        'assigned_to_id' => $request->user()->id,
-        'status' => 'scheduled',
-    ]);
-
-    broadcast(new AppointmentChanged($appointment->fresh(), 'assigned'))->toOthers();
-
-    return response()->json([
-        'data' => $appointment->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
-        'message' => 'Appointment claimed successfully.',
-    ]);
-}
 }

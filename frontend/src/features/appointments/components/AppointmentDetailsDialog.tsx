@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import {
   CalendarCheck,
   CalendarClock,
@@ -6,13 +6,16 @@ import {
   Hash,
   Layers,
   Mail,
+  MessageSquareText,
   NotebookText,
+  Send,
   UserCheck,
   UserRound,
   type LucideIcon,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -21,10 +24,24 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import type { Appointment, AppointmentStatus } from '@/features/appointments/appointment-api'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  createAppointmentActivity,
+  getAppointmentActivities,
+  type Appointment,
+  type AppointmentActivity,
+  type AppointmentStatus,
+} from '@/features/appointments/appointment-api'
+import { getApiErrorMessage } from '@/features/auth/auth-api'
+import { echo } from '@/lib/echo'
 import { cn } from '@/lib/utils'
 
-const appointmentStatusOptions: AppointmentStatus[] = ['pending', 'scheduled', 'completed', 'cancelled']
+const appointmentStatusOptions: AppointmentStatus[] = [
+  'pending',
+  'scheduled',
+  'completed',
+  'cancelled',
+]
 
 const statusStyles: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
@@ -33,7 +50,7 @@ const statusStyles: Record<string, string> = {
   cancelled: 'bg-slate-200 text-slate-700',
 }
 
-type AppointmentDetailsMode = 'queue' | 'work' | 'readonly'
+type AppointmentDetailsMode = 'queue' | 'work' | 'readonly' | 'activity'
 
 type AppointmentDetailsDialogProps = {
   appointment: Appointment
@@ -41,6 +58,9 @@ type AppointmentDetailsDialogProps = {
   footerAction?: ReactNode
   isUpdating?: boolean
   onStatusChange?: (appointmentId: number, status: AppointmentStatus) => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean
 }
 
 function formatStatus(status: string) {
@@ -53,15 +73,97 @@ export function AppointmentDetailsDialog({
   footerAction,
   isUpdating = false,
   onStatusChange,
+  open,
+  onOpenChange,
+  hideTrigger = false,
 }: AppointmentDetailsDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = open ?? internalOpen
+  const setIsOpen = onOpenChange ?? setInternalOpen
+
+  const [activities, setActivities] = useState<AppointmentActivity[]>([])
+  const [reply, setReply] = useState('')
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false)
+  const [isSendingReply, setIsSendingReply] = useState(false)
+  const [activityError, setActivityError] = useState('')
+
+  const isUnassigned = appointment.assigned_to_id === null
   const showStaffControls = mode === 'work'
+  const showActivity = mode === 'work' || mode === 'activity'
+
+  useEffect(() => {
+    if (!isOpen || !showActivity) return
+
+    async function loadActivities() {
+      setIsLoadingActivities(true)
+      setActivityError('')
+
+      try {
+        const response = await getAppointmentActivities(appointment.id)
+        setActivities(response.data)
+      } catch (error) {
+        setActivityError(getApiErrorMessage(error, 'Unable to load appointment activity.'))
+      } finally {
+        setIsLoadingActivities(false)
+      }
+    }
+
+    void loadActivities()
+  }, [isOpen, showActivity, appointment.id])
+
+  useEffect(() => {
+    if (!isOpen || !showActivity) return
+
+    const channel = echo.channel(`officeflow.appointment.${appointment.id}`)
+
+    channel.listen('.appointment.activity.created', (event: { data: AppointmentActivity }) => {
+      setActivities((current) =>
+        current.some((activity) => activity.id === event.data.id)
+          ? current
+          : [...current, event.data]
+      )
+    })
+
+    return () => {
+      channel.stopListening('.appointment.activity.created')
+      echo.leaveChannel(`officeflow.appointment.${appointment.id}`)
+    }
+  }, [isOpen, showActivity, appointment.id])
+
+  async function handleReplySubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const message = reply.trim()
+    if (!message) return
+
+    setIsSendingReply(true)
+    setActivityError('')
+
+    try {
+      const response = await createAppointmentActivity(appointment.id, message)
+
+      setActivities((current) =>
+        current.some((activity) => activity.id === response.data.id)
+          ? current
+          : [...current, response.data]
+      )
+
+      setReply('')
+    } catch (error) {
+      setActivityError(getApiErrorMessage(error, 'Unable to add appointment update.'))
+    } finally {
+      setIsSendingReply(false)
+    }
+  }
 
   return (
-    <Dialog>
-      <DialogTrigger className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground">
-        <Eye className="size-4" />
-        View details
-      </DialogTrigger>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      {!hideTrigger ? (
+        <DialogTrigger className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground">
+          <Eye className="size-4" />
+          View details
+        </DialogTrigger>
+      ) : null}
 
       <DialogContent className="flex !max-w-3xl max-h-[90vh] flex-col overflow-hidden rounded-lg p-0">
         <div className="shrink-0 border-b bg-gradient-to-r from-emerald-50 via-white to-amber-50 px-6 py-5">
@@ -79,10 +181,16 @@ export function AppointmentDetailsDialog({
                   Appointment request details and requester information.
                 </DialogDescription>
 
-                <div className="mt-4">
+                <div className="mt-4 flex flex-wrap gap-2">
                   <Badge variant="secondary" className={cn('border-0 capitalize', statusStyles[appointment.status])}>
                     {formatStatus(appointment.status)}
                   </Badge>
+
+                  {isUnassigned ? (
+                    <Badge variant="secondary" className="border-0 bg-violet-100 text-violet-700">
+                      Unassigned
+                    </Badge>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -103,7 +211,9 @@ export function AppointmentDetailsDialog({
                 <select
                   value={appointment.status}
                   disabled={!onStatusChange || isUpdating}
-                  onChange={(event) => onStatusChange?.(appointment.id, event.target.value as AppointmentStatus)}
+                  onChange={(event) =>
+                    onStatusChange?.(appointment.id, event.target.value as AppointmentStatus)
+                  }
                   className="h-10 min-w-44 cursor-pointer rounded-md border bg-background px-3 text-sm capitalize disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {appointmentStatusOptions.map((status) => (
@@ -140,6 +250,68 @@ export function AppointmentDetailsDialog({
               {appointment.notes || 'No notes added.'}
             </p>
           </section>
+
+          {showActivity ? (
+            <section className="rounded-lg border bg-emerald-50/50 p-4">
+              <div className="mb-4 flex items-center gap-2">
+                <MessageSquareText className="size-4 text-emerald-700" />
+                <div>
+                  <p className="font-medium">Appointment activity</p>
+                  <p className="text-sm text-muted-foreground">
+                    Staff replies and requester updates for this appointment.
+                  </p>
+                </div>
+              </div>
+
+              {activityError ? (
+                <div className="mb-3 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                  {activityError}
+                </div>
+              ) : null}
+
+              <div className="max-h-44 space-y-3 overflow-y-auto rounded-lg border bg-background p-3">
+                {isLoadingActivities ? (
+                  <p className="text-sm text-muted-foreground">Loading activity...</p>
+                ) : activities.length ? (
+                  activities.map((activity) => (
+                    <div key={activity.id} className="rounded-lg border bg-muted/30 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium">{activity.user?.name ?? 'OfficeFlow'}</p>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(activity.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                        {activity.message}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No activity yet. Add the first update for this appointment.
+                  </p>
+                )}
+              </div>
+
+              <form onSubmit={handleReplySubmit} className="mt-4 space-y-3">
+                <Textarea
+                  value={reply}
+                  onChange={(event) => setReply(event.target.value)}
+                  placeholder="Write an appointment update..."
+                  className="min-h-20 resize-none bg-background"
+                />
+
+                <Button
+                  type="submit"
+                  className="w-full cursor-pointer"
+                  disabled={isSendingReply || !reply.trim()}
+                >
+                  Send update
+                  <Send className="size-4" />
+                </Button>
+              </form>
+            </section>
+          ) : null}
         </div>
 
         {footerAction ? (

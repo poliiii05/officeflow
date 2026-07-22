@@ -36,24 +36,42 @@ class StaffDashboardController extends Controller
             ->latest('scheduled_at')
             ->paginate($perPage, ['*'], 'appointment_page', $validated['appointment_page'] ?? 1);
 
+        $myActiveTickets = Ticket::where('assigned_to_id', $user->id)
+            ->whereIn('status', ['open', 'in_progress'])
+            ->count();
+
+        $myActiveAppointments = Appointment::where('assigned_to_id', $user->id)
+            ->whereIn('status', ['pending', 'scheduled'])
+            ->count();
+
+        $unassignedTickets = Ticket::whereNull('assigned_to_id')
+            ->where('status', 'open')
+            ->count();
+
+        $pendingAppointments = Appointment::whereNull('assigned_to_id')
+            ->where('status', 'pending')
+            ->count();
+
+        $resolvedToday = Ticket::whereIn('status', ['resolved', 'closed'])
+            ->whereDate('resolved_at', now()->toDateString())
+            ->count()
+            + Appointment::where('status', 'completed')
+                ->whereDate('updated_at', now()->toDateString())
+                ->count();
+
         return response()->json([
             'data' => [
                 'tickets' => $this->paginationPayload($tickets),
                 'appointments' => $this->paginationPayload($appointments),
                 'totals' => [
-                    'myActiveTickets' => Ticket::where('assigned_to_id', $user->id)
-                        ->whereIn('status', ['open', 'in_progress'])
-                        ->count(),
-                    'unassignedTickets' => Ticket::whereNull('assigned_to_id')
-                        ->where('status', 'open')
-                        ->count(),
-                    'pendingAppointments' => Appointment::where('status', 'pending')->count(),
-                    'resolvedToday' => Ticket::whereIn('status', ['resolved', 'closed'])
-                        ->whereDate('resolved_at', now()->toDateString())
-                        ->count()
-                        + Appointment::where('status', 'completed')
-                            ->whereDate('updated_at', now()->toDateString())
-                            ->count(),
+                    'queueTotal' => $unassignedTickets + $pendingAppointments,
+                    'myWorkTotal' => $myActiveTickets + $myActiveAppointments,
+                    'resolvedToday' => $resolvedToday,
+                    'allRecords' => Ticket::count() + Appointment::count(),
+                    'myActiveTickets' => $myActiveTickets,
+                    'myActiveAppointments' => $myActiveAppointments,
+                    'unassignedTickets' => $unassignedTickets,
+                    'pendingAppointments' => $pendingAppointments,
                 ],
             ],
         ]);
@@ -92,10 +110,12 @@ class StaffDashboardController extends Controller
     {
         return Appointment::query()
             ->with(['requester:id,name,email,requester_type', 'assignedTo:id,name,email'])
-            ->when($view === 'unassigned', fn ($query) => $query->where('status', 'pending'))
+            ->when($view === 'unassigned', fn ($query) => $query
+                ->whereNull('assigned_to_id')
+                ->where('status', 'pending'))
             ->when($view === 'mine', fn ($query) => $query
                 ->where('assigned_to_id', $userId)
-                ->where('status', 'scheduled'))
+                ->whereIn('status', ['pending', 'scheduled']))
             ->when($view === 'resolved_today', fn ($query) => $query
                 ->where('status', 'completed')
                 ->whereDate('updated_at', now()->toDateString()))

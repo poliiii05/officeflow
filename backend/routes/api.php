@@ -8,6 +8,8 @@
     use App\Http\Controllers\Api\V1\StaffDashboardController;
     use App\Http\Controllers\Api\V1\TicketActivityController;
     use App\Http\Controllers\Api\V1\NotificationController;
+    use App\Http\Controllers\Api\V1\AppointmentActivityController;
+
 
     Route::prefix('v1')->group(function () {
         Route::get('/health', fn () => [
@@ -66,6 +68,12 @@
             ->middleware('throttle:180,1');
 
             Route::post('/notifications/read', [NotificationController::class, 'markAllAsRead'])
+            ->middleware('throttle:60,1');
+
+            Route::get('/appointments/{appointment}/activities', [AppointmentActivityController::class, 'index'])
+            ->middleware('throttle:180,1');
+
+            Route::post('/appointments/{appointment}/activities', [AppointmentActivityController::class, 'store'])
             ->middleware('throttle:60,1');
         });
     });

@@ -24,7 +24,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { getAppointments, type Appointment } from '@/features/appointments/appointment-api'
+import {
+  getAppointment,
+  getAppointments,
+  type Appointment,
+} from '@/features/appointments/appointment-api'
 import { AppointmentDetailsDialog } from '@/features/appointments/components/AppointmentDetailsDialog'
 import { BookAppointmentDialog } from '@/features/appointments/components/BookAppointmentDialog'
 import { getApiErrorMessage } from '@/features/auth/auth-api'
@@ -88,6 +92,8 @@ export function DashboardPage() {
 
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
   const [isSelectedTicketOpen, setIsSelectedTicketOpen] = useState(false)
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
+  const [isSelectedAppointmentOpen, setIsSelectedAppointmentOpen] = useState(false)
 
   async function loadNotifications() {
     setIsLoadingNotifications(true)
@@ -103,28 +109,50 @@ export function DashboardPage() {
     }
   }
 
-  async function handleNotificationClick(notification: OfficeFlowNotification) {
+async function handleNotificationClick(notification: OfficeFlowNotification) {
   const ticketId = notification.data.ticket_id
+  const appointmentId = notification.data.appointment_id
 
-  if (!ticketId) return
+  if (ticketId) {
+    const existingTicket = tickets.find((ticket) => ticket.id === ticketId)
 
-  const existingTicket = tickets.find((ticket) => ticket.id === ticketId)
+    if (existingTicket) {
+      setSelectedTicket(existingTicket)
+      setIsSelectedTicketOpen(true)
+      return
+    }
 
-  if (existingTicket) {
-    setSelectedTicket(existingTicket)
-    setIsSelectedTicketOpen(true)
+    try {
+      const response = await getTicket(ticketId)
+      setSelectedTicket(response.data)
+      setIsSelectedTicketOpen(true)
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'Unable to open notification ticket.'))
+    }
+
     return
   }
 
-  try {
-    const response = await getTicket(ticketId)
-    setSelectedTicket(response.data)
-    setIsSelectedTicketOpen(true)
-  } catch (error) {
-    setError(getApiErrorMessage(error, 'Unable to open notification ticket.'))
+  if (appointmentId) {
+    const existingAppointment = appointments.find(
+      (appointment) => appointment.id === appointmentId
+    )
+
+    if (existingAppointment) {
+      setSelectedAppointment(existingAppointment)
+      setIsSelectedAppointmentOpen(true)
+      return
+    }
+
+    try {
+      const response = await getAppointment(appointmentId)
+      setSelectedAppointment(response.data)
+      setIsSelectedAppointmentOpen(true)
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'Unable to open notification appointment.'))
+    }
   }
 }
-
   async function handleNotificationOpen() {
     const response = await loadNotifications()
     const currentUnreadCount = response?.meta.unread_count ?? 0
@@ -342,13 +370,14 @@ export function DashboardPage() {
                             <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                               {notification.data.message ??
                                 notification.data.ticket_subject ??
+                                notification.data.appointment_purpose ??
                                 'New update available.'}
                             </p>
-                            {notification.data.ticket_number ? (
-                              <p className="mt-1 text-xs font-medium text-sky-700">
-                                {notification.data.ticket_number}
-                              </p>
-                            ) : null}
+                            {notification.data.ticket_number || notification.data.appointment_number ? (
+                                <p className="mt-1 text-xs font-medium text-sky-700">
+                                  {notification.data.ticket_number ?? notification.data.appointment_number}
+                                </p>
+                              ) : null}
                           </div>
                         </div>
                       </DropdownMenuItem>
@@ -614,21 +643,38 @@ export function DashboardPage() {
           </aside>
         </div>
 
-        {selectedTicket ? (
-  <TicketDetailsDialog
-    ticket={selectedTicket}
-    mode="activity"
-    open={isSelectedTicketOpen}
-    onOpenChange={(open) => {
-      setIsSelectedTicketOpen(open)
+                    {selectedTicket ? (
+              <TicketDetailsDialog
+                ticket={selectedTicket}
+                mode="activity"
+                open={isSelectedTicketOpen}
+                onOpenChange={(open) => {
+                  setIsSelectedTicketOpen(open)
 
-      if (!open) {
-        setSelectedTicket(null)
-      }
-    }}
-    hideTrigger
-  />
-) : null}
+                  if (!open) {
+                    setSelectedTicket(null)
+                  }
+                }}
+                hideTrigger
+              />
+            ) : null}
+
+            {selectedAppointment ? (
+              <AppointmentDetailsDialog
+                appointment={selectedAppointment}
+                mode="activity"
+                open={isSelectedAppointmentOpen}
+                onOpenChange={(open) => {
+                  setIsSelectedAppointmentOpen(open)
+
+                  if (!open) {
+                    setSelectedAppointment(null)
+                  }
+                }}
+                hideTrigger
+              />
+            ) : null}
+            
       </section>
     </main>
   )

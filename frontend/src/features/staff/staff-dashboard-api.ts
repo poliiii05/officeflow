@@ -5,10 +5,14 @@ import type { PaginatedResponse, Ticket } from '@/features/tickets/ticket-api'
 export type StaffQueueView = 'unassigned' | 'mine' | 'resolved_today' | 'all'
 
 export type StaffDashboardTotals = {
+  queueTotal: number
+  myWorkTotal: number
+  resolvedToday: number
+  allRecords: number
   myActiveTickets: number
+  myActiveAppointments: number
   unassignedTickets: number
   pendingAppointments: number
-  resolvedToday: number
 }
 
 export type StaffOverviewParams = {

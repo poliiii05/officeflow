@@ -20,6 +20,23 @@ export type Appointment = {
   updated_at: string
 }
 
+export type AppointmentActivity = {
+  id: number
+  appointment_id: number
+  user_id: number | null
+  type: 'message' | 'staff_reply' | 'requester_reply' | string
+  message: string
+  is_internal: boolean
+  created_at: string
+  updated_at: string
+  user?: {
+    id: number
+    name: string
+    email: string
+    role: 'user' | 'staff' | 'super_admin'
+  } | null
+}
+
 export type AppointmentListParams = {
   queue?: 'pending' | 'scheduled' | 'completed_today' | 'all'
   status?: string
@@ -54,6 +71,14 @@ export async function getAppointments(params: AppointmentListParams = {}) {
   return response.data
 }
 
+export async function getAppointment(appointmentId: number) {
+  const response = await api.get<{ data: Appointment }>(
+    `/appointments/${appointmentId}`
+  )
+
+  return response.data
+}
+
 export async function createAppointment(payload: CreateAppointmentPayload) {
   const response = await api.post<{ data: Appointment; message: string }>(
     '/appointments',
@@ -82,3 +107,24 @@ export async function assignAppointment(appointmentId: number) {
 
   return response.data
 }
+
+export async function getAppointmentActivities(appointmentId: number) {
+  const response = await api.get<{ data: AppointmentActivity[] }>(
+    `/appointments/${appointmentId}/activities`
+  )
+
+  return response.data
+}
+
+export async function createAppointmentActivity(
+  appointmentId: number,
+  message: string
+) {
+  const response = await api.post<{ data: AppointmentActivity; message: string }>(
+    `/appointments/${appointmentId}/activities`,
+    { message }
+  )
+
+  return response.data
+}
+

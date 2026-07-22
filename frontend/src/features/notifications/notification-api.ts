@@ -5,14 +5,20 @@ export type OfficeFlowNotification = {
   type: string
   notifiable_type: string
   notifiable_id: number
-  data: {
-    title?: string
-    message?: string
-    ticket_id?: number
-    ticket_number?: string
-    ticket_subject?: string
-    activity_id?: number
-  }
+ data: {
+  title?: string
+  message?: string
+
+  ticket_id?: number
+  ticket_number?: string
+  ticket_subject?: string
+
+  appointment_id?: number
+  appointment_number?: string
+  appointment_purpose?: string
+
+  activity_id?: number
+}
   read_at: string | null
   created_at: string
   updated_at: string
