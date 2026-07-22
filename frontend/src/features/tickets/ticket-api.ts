@@ -3,10 +3,25 @@ import { api } from '@/lib/api'
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
 export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent'
 
+export type Requester = {
+  id: number
+  name: string
+  email: string
+  requester_type: 'employee' | 'visitor' | null
+}
+
+export type AssignedStaff = {
+  id: number
+  name: string
+  email: string
+}
+
 export type Ticket = {
   id: number
   requester_id: number
   assigned_to_id: number | null
+  requester?: Requester
+  assigned_to?: AssignedStaff | null
   ticket_number: string
   subject: string
   description: string
@@ -20,6 +35,7 @@ export type Ticket = {
 }
 
 export type TicketListParams = {
+  queue?: 'unassigned' | 'mine' | 'resolved_today' | 'all'
   status?: string
   priority?: string
   department?: string
@@ -47,16 +63,12 @@ export type PaginatedResponse<T> = {
 }
 
 export async function getTickets(params: TicketListParams = {}) {
-  const response = await api.get<PaginatedResponse<Ticket>>('/tickets', {
-    params,
-  })
-
+  const response = await api.get<PaginatedResponse<Ticket>>('/tickets', { params })
   return response.data
 }
 
 export async function createTicket(payload: CreateTicketPayload) {
   const response = await api.post<{ data: Ticket; message: string }>('/tickets', payload)
-
   return response.data
 }
 

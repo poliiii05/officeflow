@@ -1,4 +1,5 @@
 import { api } from '@/lib/api'
+import type { AssignedStaff, Requester } from '@/features/tickets/ticket-api'
 
 export type AppointmentStatus = 'pending' | 'scheduled' | 'completed' | 'cancelled'
 
@@ -6,6 +7,8 @@ export type Appointment = {
   id: number
   requester_id: number
   assigned_to_id: number | null
+  requester?: Requester
+  assigned_to?: AssignedStaff | null
   appointment_number: string
   purpose: string
   notes: string | null
@@ -18,6 +21,7 @@ export type Appointment = {
 }
 
 export type AppointmentListParams = {
+  queue?: 'pending' | 'scheduled' | 'completed_today' | 'all'
   status?: string
   department?: string
   search?: string
@@ -66,6 +70,14 @@ export async function updateAppointmentStatus(
   const response = await api.patch<{ data: Appointment; message: string }>(
     `/appointments/${appointmentId}/status`,
     { status }
+  )
+
+  return response.data
+}
+
+export async function assignAppointment(appointmentId: number) {
+  const response = await api.patch<{ data: Appointment; message: string }>(
+    `/appointments/${appointmentId}/assign`
   )
 
   return response.data

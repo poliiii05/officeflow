@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\TicketController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\V1\StaffDashboardController;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', fn () => [
@@ -30,12 +31,27 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::post('/auth/accept-terms', [AuthController::class, 'acceptTerms']);
 
+        Route::patch('/tickets/{ticket}/status', [TicketController::class, 'updateStatus'])
+            ->middleware('throttle:180,1');
+
+        Route::patch('/tickets/{ticket}/assign', [TicketController::class, 'assign'])
+            ->middleware('throttle:180,1');
+
+        Route::patch('/appointments/{appointment}/status', [AppointmentController::class, 'updateStatus'])
+            ->middleware('throttle:180,1');
+
+        Route::patch('/appointments/{appointment}/assign', [AppointmentController::class, 'assign'])
+        ->middleware('throttle:180,1');
+
         Route::apiResource('tickets', TicketController::class)
             ->only(['index', 'store', 'show'])
-            ->middleware('throttle:60,1');
+            ->middleware('throttle:180,1');
 
         Route::apiResource('appointments', AppointmentController::class)
             ->only(['index', 'store', 'show'])
-            ->middleware('throttle:60,1');
+            ->middleware('throttle:180,1');
+        
+        Route::get('/staff/overview', [StaffDashboardController::class, 'overview'])
+         ->middleware('throttle:180,1');
     });
 });
