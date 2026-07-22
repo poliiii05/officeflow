@@ -4,12 +4,14 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   ClipboardList,
   Database,
   FileText,
   Inbox,
   ListChecks,
   LogOut,
+  Power,
   RefreshCw,
   Search,
   UserCheck,
@@ -48,6 +50,12 @@ import {
   type StaffDashboardTotals,
   type StaffQueueView,
 } from '@/features/staff/staff-dashboard-api'
+import {
+  endStaffShift,
+  getCurrentStaffShift,
+  startStaffShift,
+  type StaffShiftState,
+} from '@/features/staff/staff-shift-api'
 import {
   assignTicket,
   updateTicketStatus,
@@ -178,6 +186,15 @@ function formatStatus(status: string) {
   return status.replace('_', ' ')
 }
 
+function formatShiftStartedAt(value?: string | null) {
+  if (!value) return 'No active shift'
+
+  return `Started ${new Date(value).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`
+}
+
 function createQueueItems(tickets: Ticket[], appointments: Appointment[]): QueueItem[] {
   return [
     ...tickets.map((ticket): QueueItem => ({
@@ -227,8 +244,15 @@ export function StaffDashboardPage() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [updatingKey, setUpdatingKey] = useState<string | null>(null)
-  const [error, setError] = useState('')
+const [shiftState, setShiftState] = useState<StaffShiftState>({
+  is_on_duty: false,
+  shift: null,
+})
+const [isShiftLoading, setIsShiftLoading] = useState(true)
+const [isShiftUpdating, setIsShiftUpdating] = useState(false)
+const [isEndShiftDialogOpen, setIsEndShiftDialogOpen] = useState(false)
+const [updatingKey, setUpdatingKey] = useState<string | null>(null)
+const [error, setError] = useState('')
 
     const activeWorkView = useMemo(
     () => workViews.find((view) => view.value === activeView) ?? workViews[0],
@@ -307,6 +331,22 @@ export function StaffDashboardPage() {
   useEffect(() => {
     void loadStaffData()
   }, [loadStaffData])
+
+  useEffect(() => {
+  async function loadCurrentShift() {
+    try {
+      const response = await getCurrentStaffShift()
+      setShiftState(response.data)
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'Unable to load staff shift.'))
+    } finally {
+      setIsShiftLoading(false)
+    }
+  }
+
+  void loadCurrentShift()
+}, [])
+
 
   useEffect(() => {
     const channel = echo.channel('officeflow.staff')
@@ -485,6 +525,35 @@ export function StaffDashboardPage() {
     }
   }
 
+  async function handleStartShift() {
+    setIsShiftUpdating(true)
+    setError('')
+
+    try {
+      const response = await startStaffShift()
+      setShiftState(response.data)
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'Unable to start shift.'))
+    } finally {
+      setIsShiftUpdating(false)
+    }
+  }
+
+  async function handleEndShift() {
+    setIsShiftUpdating(true)
+    setError('')
+
+    try {
+      const response = await endStaffShift()
+      setShiftState(response.data)
+      setIsEndShiftDialogOpen(false)
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'Unable to end shift.'))
+    } finally {
+      setIsShiftUpdating(false)
+    }
+  }
+
   function handleSearchChange(event: ChangeEvent<HTMLInputElement>) {
     setSearch(event.target.value)
   }
@@ -500,8 +569,17 @@ export function StaffDashboardPage() {
     navigate('/', { replace: true })
   }
 
-    const showInitialLoading = isLoading && !hasLoadedOnce
+  const showInitialLoading = isLoading && !hasLoadedOnce
   const queuePreviewItems = queueItems.slice(0, 4)
+  const shiftStatusLabel = isShiftLoading
+  ? 'Checking shift'
+  : shiftState.is_on_duty
+    ? 'On duty'
+    : 'Off duty'
+const shiftTimeLabel = shiftState.is_on_duty
+const hasActiveWork = dashboardTotals.myWorkTotal > 0
+  ? formatShiftStartedAt(shiftState.shift?.started_at)
+  : 'Start shift to claim queue items'
 
   const summaryCards = [
     {
@@ -586,11 +664,153 @@ export function StaffDashboardPage() {
             </p>
           </div>
 
+        <div className="flex flex-wrap items-center gap-3">
+          <div
+            className={cn(
+              'flex min-w-72 items-center justify-between gap-4 rounded-lg border px-4 py-3 shadow-sm',
+              shiftState.is_on_duty
+                ? 'border-emerald-200 bg-emerald-50'
+                : 'border-slate-200 bg-white'
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={cn(
+                  'relative flex size-3 rounded-full',
+                  shiftState.is_on_duty ? 'bg-emerald-500' : 'bg-slate-300'
+                )}
+              >
+                {shiftState.is_on_duty ? (
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                ) : null}
+              </span>
+
+              <div>
+                <p className="text-sm font-semibold">
+                  {shiftState.is_on_duty ? 'Clocked in' : 'Not clocked in'}
+                </p>
+                <p className="text-xs text-muted-foreground">{shiftTimeLabel}</p>
+              </div>
+            </div>
+
+            {shiftState.is_on_duty ? (
+              <Dialog open={isEndShiftDialogOpen} onOpenChange={setIsEndShiftDialogOpen}>
+                <DialogTrigger className="inline-flex h-9 cursor-pointer items-center justify-center rounded-md border bg-white px-3 text-sm font-medium shadow-xs hover:bg-slate-50">
+                  End shift
+                </DialogTrigger>
+
+                <DialogContent className="!max-w-xl overflow-hidden rounded-xl p-0">
+                  <div className="border-b bg-gradient-to-r from-amber-50 via-white to-slate-50 px-6 py-5">
+                    <DialogHeader>
+                      <div className="flex items-start gap-3">
+                        <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                          <Clock3 className="size-5" />
+                        </div>
+
+                        <div>
+                          <DialogTitle>End your shift?</DialogTitle>
+                          <DialogDescription className="mt-1">
+                            This will clock you out and record your work session end time.
+                          </DialogDescription>
+                        </div>
+                      </div>
+                    </DialogHeader>
+                  </div>
+
+                  <div className="space-y-4 px-6 py-5">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">Current status</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="size-2 rounded-full bg-emerald-500" />
+                          <p className="font-medium text-emerald-700">Clocked in</p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">Shift started</p>
+                        <p className="mt-2 font-medium">
+                          {shiftState.shift?.started_at
+                            ? new Date(shiftState.shift.started_at).toLocaleString()
+                            : 'Not available'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-lg border bg-sky-50 p-4">
+                        <p className="text-sm text-muted-foreground">Active tickets</p>
+                        <p className="mt-2 text-2xl font-semibold">{dashboardTotals.myActiveTickets}</p>
+                      </div>
+
+                      <div className="rounded-lg border bg-emerald-50 p-4">
+                        <p className="text-sm text-muted-foreground">Appointments</p>
+                        <p className="mt-2 text-2xl font-semibold">{dashboardTotals.myActiveAppointments}</p>
+                      </div>
+
+                      <div className="rounded-lg border bg-violet-50 p-4">
+                        <p className="text-sm text-muted-foreground">Total active</p>
+                        <p className="mt-2 text-2xl font-semibold">{dashboardTotals.myWorkTotal}</p>
+                      </div>
+                    </div>
+
+                    {hasActiveWork ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                        <p className="font-medium">Active assigned work remains</p>
+                        <p className="mt-1 leading-6">
+                          You still have {dashboardTotals.myWorkTotal} active assigned request
+                          {dashboardTotals.myWorkTotal === 1 ? '' : 's'}. They will stay assigned to you after clock out.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                        No active assigned work. You can safely end this shift.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2 border-t bg-slate-50 px-6 py-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="cursor-pointer bg-white"
+                      onClick={() => setIsEndShiftDialogOpen(false)}
+                      disabled={isShiftUpdating}
+                    >
+                      Cancel
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      className="cursor-pointer"
+                      onClick={handleEndShift}
+                      disabled={isShiftUpdating}
+                    >
+                      End shift
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            ) : (
+              <Button
+                type="button"
+                className="cursor-pointer gap-2"
+                disabled={isShiftLoading || isShiftUpdating}
+                onClick={handleStartShift}
+              >
+                <Power className="size-4" />
+                Start shift
+              </Button>
+            )}
+          </div>
+
           <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs text-muted-foreground shadow-sm">
             <RefreshCw className={cn('size-3.5', isRefreshing && 'animate-spin')} />
             Live sync
           </div>
         </div>
+         </div>
 
         {error ? (
           <div className="mt-5 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
@@ -633,6 +853,12 @@ export function StaffDashboardPage() {
             </p>
           </div>
 
+            {activeView === 'mine' && !shiftState.is_on_duty ? (
+            <div className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+              Start your shift to update statuses or send staff replies.
+            </div>
+          ) : null}
+
           <div className="space-y-3 px-5 pb-5">
             {showInitialLoading ? (
               <p className="rounded-lg border bg-white p-4 text-sm text-muted-foreground">
@@ -643,6 +869,7 @@ export function StaffDashboardPage() {
                 <QueueRequestRow
                   key={`${item.kind}-${item.id}`}
                   item={item}
+                  isOnDuty={shiftState.is_on_duty}
                   updatingKey={updatingKey}
                   onClaimTicket={handleClaimTicket}
                   onClaimAppointment={handleClaimAppointment}
@@ -674,9 +901,10 @@ export function StaffDashboardPage() {
                 <div className="flex-1 space-y-3 overflow-y-auto px-6 py-5">
                   {queueItems.length ? (
                     queueItems.map((item) => (
-                      <QueueRequestRow
+                     <QueueRequestRow
                         key={`${item.kind}-${item.id}`}
                         item={item}
+                        isOnDuty={shiftState.is_on_duty}
                         updatingKey={updatingKey}
                         onClaimTicket={handleClaimTicket}
                         onClaimAppointment={handleClaimAppointment}
@@ -752,12 +980,14 @@ export function StaffDashboardPage() {
                 >
                   <TicketSummary ticket={ticket} />
 
-                  <TicketDetailsDialog
-                    ticket={ticket}
-                    mode={activeView === 'mine' ? 'work' : 'readonly'}
-                    isUpdating={updatingKey === `ticket-${ticket.id}`}
-                    onStatusChange={activeView === 'mine' ? handleTicketStatusChange : undefined}
-                  />
+                 <TicketDetailsDialog
+                  ticket={ticket}
+                  mode={activeView === 'mine' && shiftState.is_on_duty ? 'work' : 'readonly'}
+                  isUpdating={updatingKey === `ticket-${ticket.id}`}
+                  onStatusChange={
+                    activeView === 'mine' && shiftState.is_on_duty ? handleTicketStatusChange : undefined
+                  }
+                />
                 </article>
               ))
             ) : (
@@ -782,6 +1012,12 @@ export function StaffDashboardPage() {
               <CalendarCheck className="size-5 text-emerald-700" />
             </div>
 
+            {activeView === 'mine' && !shiftState.is_on_duty ? (
+            <div className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+              Start your shift to update statuses or send staff replies.
+            </div>
+          ) : null}
+
             {showInitialLoading ? (
               <div className="px-5 py-8 text-sm text-muted-foreground">Loading appointments...</div>
             ) : appointments.length ? (
@@ -793,11 +1029,13 @@ export function StaffDashboardPage() {
                   <AppointmentSummary appointment={appointment} />
 
                   <AppointmentDetailsDialog
-                    appointment={appointment}
-                    mode={activeView === 'mine' ? 'work' : 'readonly'}
-                    isUpdating={updatingKey === `appointment-${appointment.id}`}
-                    onStatusChange={activeView === 'mine' ? handleAppointmentStatusChange : undefined}
-                  />
+                  appointment={appointment}
+                  mode={activeView === 'mine' && shiftState.is_on_duty ? 'work' : 'readonly'}
+                  isUpdating={updatingKey === `appointment-${appointment.id}`}
+                  onStatusChange={
+                    activeView === 'mine' && shiftState.is_on_duty ? handleAppointmentStatusChange : undefined
+                  }
+                />
                 </article>
               ))
             ) : (
@@ -820,11 +1058,13 @@ export function StaffDashboardPage() {
 
 function QueueRequestRow({
   item,
+  isOnDuty,
   updatingKey,
   onClaimTicket,
   onClaimAppointment,
 }: {
   item: QueueItem
+  isOnDuty: boolean
   updatingKey: string | null
   onClaimTicket: (ticketId: number) => void
   onClaimAppointment: (appointmentId: number) => void
@@ -873,7 +1113,7 @@ function QueueRequestRow({
           type="button"
           size="sm"
           className="h-9 cursor-pointer gap-2"
-          disabled={isUpdating}
+          disabled={isUpdating || !isOnDuty}
           onClick={() => {
             if (isTicket) {
               onClaimTicket(item.data.id)
@@ -883,8 +1123,8 @@ function QueueRequestRow({
             onClaimAppointment(item.data.id)
           }}
         >
-          <UserCheck className="size-4" />
-          Claim
+         <UserCheck className="size-4" />
+{isOnDuty ? 'Claim' : 'Start shift first'}
         </Button>
 
         {isTicket ? (
@@ -896,11 +1136,11 @@ function QueueRequestRow({
               <Button
                 type="button"
                 className="w-full cursor-pointer gap-2"
-                disabled={isUpdating}
+                disabled={isUpdating || !isOnDuty}
                 onClick={() => onClaimTicket(item.data.id)}
               >
                 <UserCheck className="size-4" />
-                Claim ticket
+              {isOnDuty ? 'Claim ticket' : 'Start shift first'}
               </Button>
             }
           />
@@ -913,11 +1153,11 @@ function QueueRequestRow({
               <Button
                 type="button"
                 className="w-full cursor-pointer gap-2"
-                disabled={isUpdating}
+                disabled={isUpdating || !isOnDuty}
                 onClick={() => onClaimAppointment(item.data.id)}
               >
                 <UserCheck className="size-4" />
-                Claim appointment
+                {isOnDuty ? 'Claim appointment' : 'Start shift first'}
               </Button>
             }
           />

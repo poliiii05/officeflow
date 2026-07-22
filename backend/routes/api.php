@@ -9,6 +9,7 @@
     use App\Http\Controllers\Api\V1\TicketActivityController;
     use App\Http\Controllers\Api\V1\NotificationController;
     use App\Http\Controllers\Api\V1\AppointmentActivityController;
+    use App\Http\Controllers\Api\V1\StaffShiftController;
 
 
     Route::prefix('v1')->group(function () {
@@ -54,6 +55,15 @@
             Route::apiResource('appointments', AppointmentController::class)
                 ->only(['index', 'store', 'show'])
                 ->middleware('throttle:180,1');
+            
+            Route::get('/staff/shift/current', [StaffShiftController::class, 'current'])
+                ->middleware('throttle:180,1');
+
+            Route::post('/staff/shift/start', [StaffShiftController::class, 'start'])
+                ->middleware('throttle:60,1');
+
+            Route::post('/staff/shift/end', [StaffShiftController::class, 'end'])
+                ->middleware('throttle:60,1');
             
             Route::get('/staff/overview', [StaffDashboardController::class, 'overview'])
             ->middleware('throttle:180,1');
