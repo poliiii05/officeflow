@@ -77,7 +77,7 @@ function formatStatus(status: string) {
   return status.replace('_', ' ')
 }
 
-export function DashboardPage() {
+export function UserDashboardPage() {
   const navigate = useNavigate()
   const user = getStoredUser()
 

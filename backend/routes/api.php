@@ -10,7 +10,8 @@
     use App\Http\Controllers\Api\V1\NotificationController;
     use App\Http\Controllers\Api\V1\AppointmentActivityController;
     use App\Http\Controllers\Api\V1\StaffShiftController;
-
+    use App\Http\Controllers\Api\V1\SuperAdminDashboardController;
+    use App\Http\Controllers\Api\V1\SuperAdminUserController;
 
     Route::prefix('v1')->group(function () {
         Route::get('/health', fn () => [
@@ -84,6 +85,15 @@
             ->middleware('throttle:180,1');
 
             Route::post('/appointments/{appointment}/activities', [AppointmentActivityController::class, 'store'])
+            ->middleware('throttle:60,1');
+            
+            Route::get('/super-admin/overview', [SuperAdminDashboardController::class, 'overview'])
+            ->middleware('throttle:180,1');
+
+            Route::get('/super-admin/users', [SuperAdminUserController::class, 'index'])
+            ->middleware('throttle:180,1');
+
+              Route::patch('/super-admin/users/{user}/role', [SuperAdminUserController::class, 'updateRole'])
             ->middleware('throttle:60,1');
         });
     });

@@ -571,14 +571,9 @@ const [error, setError] = useState('')
 
   const showInitialLoading = isLoading && !hasLoadedOnce
   const queuePreviewItems = queueItems.slice(0, 4)
-  const shiftStatusLabel = isShiftLoading
-  ? 'Checking shift'
-  : shiftState.is_on_duty
-    ? 'On duty'
-    : 'Off duty'
-const shiftTimeLabel = shiftState.is_on_duty
-const hasActiveWork = dashboardTotals.myWorkTotal > 0
-  ? formatShiftStartedAt(shiftState.shift?.started_at)
+  const shiftTimeLabel = shiftState.is_on_duty
+  const hasActiveWork = dashboardTotals.myWorkTotal > 0
+    ? formatShiftStartedAt(shiftState.shift?.started_at)
   : 'Start shift to claim queue items'
 
   const summaryCards = [
