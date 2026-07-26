@@ -12,6 +12,11 @@
     use App\Http\Controllers\Api\V1\StaffShiftController;
     use App\Http\Controllers\Api\V1\SuperAdminDashboardController;
     use App\Http\Controllers\Api\V1\SuperAdminUserController;
+    use App\Http\Controllers\Api\V1\SuperAdmin\AuditLogController;
+    use App\Http\Controllers\Api\V1\SuperAdmin\AnalyticsController;
+    use App\Http\Controllers\Api\V1\SystemStatusController;
+    use App\Http\Controllers\Api\V1\SuperAdmin\SystemSettingController;
+
 
     Route::prefix('v1')->group(function () {
         Route::get('/health', fn () => [
@@ -21,6 +26,9 @@
             ],
             'message' => 'OfficeFlow API is healthy.',
         ]);
+
+        Route::get('/system/status', [SystemStatusController::class, 'show'])
+        ->middleware('throttle:180,1');
 
         Route::prefix('auth')->middleware('throttle:10,1')->group(function () {
             Route::post('/register', [AuthController::class, 'register']);
@@ -95,5 +103,18 @@
 
               Route::patch('/super-admin/users/{user}/role', [SuperAdminUserController::class, 'updateRole'])
             ->middleware('throttle:60,1');
+
+            Route::get('/super-admin/audit-logs', [AuditLogController::class, 'index'])
+            ->middleware('throttle:180,1');
+
+            Route::get('/super-admin/analytics', [AnalyticsController::class, 'index'])
+             ->middleware('throttle:180,1');
+
+            Route::get('/super-admin/settings', [SystemSettingController::class, 'index'])
+            ->middleware('throttle:180,1');
+
+            Route::patch('/super-admin/settings', [SystemSettingController::class, 'update'])
+            ->middleware('throttle:60,1');
+            
         });
     });

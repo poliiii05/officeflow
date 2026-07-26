@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,10 +22,6 @@ class SuperAdminUserController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
 
-        $search = $validated['search'] ?? null;
-        $role = $validated['role'] ?? null;
-        $perPage = $validated['per_page'] ?? 10;
-
         $users = User::query()
             ->select([
                 'id',
@@ -37,8 +34,8 @@ class SuperAdminUserController extends Controller
                 'created_at',
                 'updated_at',
             ])
-            ->when($role, fn ($query) => $query->where('role', $role))
-            ->when($search, function ($query, $search) {
+            ->when($validated['role'] ?? null, fn ($query, $role) => $query->where('role', $role))
+            ->when($validated['search'] ?? null, function ($query, $search) {
                 $query->where(function ($innerQuery) use ($search) {
                     $innerQuery
                         ->where('name', 'ilike', "%{$search}%")
@@ -48,7 +45,7 @@ class SuperAdminUserController extends Controller
                 });
             })
             ->latest()
-            ->paginate($perPage, ['*'], 'page', $validated['page'] ?? 1);
+            ->paginate($validated['per_page'] ?? 10, ['*'], 'page', $validated['page'] ?? 1);
 
         return response()->json([
             'data' => $users->items(),
@@ -75,12 +72,34 @@ class SuperAdminUserController extends Controller
             ], 422);
         }
 
+        $oldRole = $user->role;
+        $oldRequesterType = $user->requester_type;
+
         $user->update([
             'role' => $validated['role'],
             'requester_type' => $validated['role'] === 'user'
                 ? ($user->requester_type ?? 'visitor')
                 : null,
         ]);
+
+        $user->refresh();
+
+        AuditLog::record(
+            $request->user(),
+            'users',
+            'role_updated',
+            "{$request->user()->name} changed {$user->name}'s role from {$oldRole} to {$user->role}.",
+            $user,
+            [
+                'target_user_id' => $user->id,
+                'target_user_email' => $user->email,
+                'old_role' => $oldRole,
+                'new_role' => $user->role,
+                'old_requester_type' => $oldRequesterType,
+                'new_requester_type' => $user->requester_type,
+            ],
+            $request
+        );
 
         return response()->json([
             'data' => $user->only([

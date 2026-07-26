@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Events\TicketChanged;
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Ticket;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Events\TicketChanged;
+
 class TicketController extends Controller
 {
     public function index(Request $request): JsonResponse
@@ -92,6 +94,22 @@ class TicketController extends Controller
             'status' => 'open',
         ]);
 
+        AuditLog::record(
+            $request->user(),
+            'tickets',
+            'created',
+            "{$request->user()->name} created ticket {$ticket->ticket_number}.",
+            $ticket,
+            [
+                'ticket_number' => $ticket->ticket_number,
+                'subject' => $ticket->subject,
+                'department' => $ticket->department,
+                'category' => $ticket->category,
+                'priority' => $ticket->priority,
+            ],
+            $request
+        );
+
         broadcast(new TicketChanged($ticket, 'created'))->toOthers();
 
         return response()->json([
@@ -121,6 +139,9 @@ class TicketController extends Controller
             'status' => ['required', 'in:open,in_progress,resolved,closed'],
         ]);
 
+        $oldStatus = $ticket->status;
+        $oldAssignedToId = $ticket->assigned_to_id;
+
         $updates = [
             'status' => $validated['status'],
             'resolved_at' => in_array($validated['status'], ['resolved', 'closed'], true) ? now() : null,
@@ -129,14 +150,34 @@ class TicketController extends Controller
         if (
             in_array($validated['status'], ['in_progress', 'resolved', 'closed'], true) &&
             $ticket->assigned_to_id === null
-        ) {  $updates['assigned_to_id'] = $request->user()->id;
+        ) {
+            $updates['assigned_to_id'] = $request->user()->id;
         }
 
         $ticket->update($updates);
-        broadcast(new TicketChanged($ticket->fresh(), 'status_updated'))->toOthers();
+
+        $freshTicket = $ticket->fresh();
+
+        AuditLog::record(
+            $request->user(),
+            'tickets',
+            'status_updated',
+            "{$request->user()->name} changed ticket {$freshTicket->ticket_number} from {$oldStatus} to {$freshTicket->status}.",
+            $freshTicket,
+            [
+                'ticket_number' => $freshTicket->ticket_number,
+                'old_status' => $oldStatus,
+                'new_status' => $freshTicket->status,
+                'old_assigned_to_id' => $oldAssignedToId,
+                'new_assigned_to_id' => $freshTicket->assigned_to_id,
+            ],
+            $request
+        );
+
+        broadcast(new TicketChanged($freshTicket, 'status_updated'))->toOthers();
 
         return response()->json([
-            'data' => $ticket->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
+            'data' => $freshTicket->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
             'message' => 'Ticket status updated successfully.',
         ]);
     }
@@ -149,14 +190,33 @@ class TicketController extends Controller
             'assigned_to_id' => ['nullable', 'exists:users,id'],
         ]);
 
+        $oldAssignedToId = $ticket->assigned_to_id;
+        $newAssignedToId = $validated['assigned_to_id'] ?? null;
+
         $ticket->update([
-            'assigned_to_id' => $validated['assigned_to_id'] ?? null,
+            'assigned_to_id' => $newAssignedToId,
         ]);
 
-        broadcast(new TicketChanged($ticket->fresh(), 'assigned'))->toOthers();
-        
+        $freshTicket = $ticket->fresh();
+
+        AuditLog::record(
+            $request->user(),
+            'tickets',
+            'assignment_updated',
+            "{$request->user()->name} updated ticket {$freshTicket->ticket_number} assignment.",
+            $freshTicket,
+            [
+                'ticket_number' => $freshTicket->ticket_number,
+                'old_assigned_to_id' => $oldAssignedToId,
+                'new_assigned_to_id' => $freshTicket->assigned_to_id,
+            ],
+            $request
+        );
+
+        broadcast(new TicketChanged($freshTicket, 'assigned'))->toOthers();
+
         return response()->json([
-            'data' => $ticket->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
+            'data' => $freshTicket->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
             'message' => 'Ticket assignment updated successfully.',
         ]);
     }

@@ -82,3 +82,51 @@ export async function updateManagedUserRole(userId: number, role: ManagedUserRol
 
   return response.data
 }
+
+export type AnalyticsTrendItem = {
+  date: string
+  label: string
+  tickets: number
+  appointments: number
+  completed: number
+}
+
+export type AnalyticsStatusItem = {
+  status: string
+  label: string
+  count: number
+}
+
+export type AnalyticsStaffLoadItem = {
+  id: number
+  name: string
+  role: 'staff' | 'super_admin'
+  is_on_duty: boolean
+  tickets: number
+  appointments: number
+  total: number
+}
+
+export type SuperAdminAnalytics = {
+  totals: {
+    tickets: number
+    appointments: number
+    queue_waiting: number
+    active_assigned: number
+    completed_today: number
+    staff_accounts: number
+    on_duty_staff: number
+  }
+  trends: AnalyticsTrendItem[]
+  ticket_statuses: AnalyticsStatusItem[]
+  appointment_statuses: AnalyticsStatusItem[]
+  staff_load: AnalyticsStaffLoadItem[]
+}
+
+export async function getSuperAdminAnalytics(days = 7) {
+  const response = await api.get<{ data: SuperAdminAnalytics }>('/super-admin/analytics', {
+    params: { days },
+  })
+
+  return response.data.data
+}

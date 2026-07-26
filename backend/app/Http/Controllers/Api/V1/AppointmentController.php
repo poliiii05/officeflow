@@ -8,6 +8,7 @@ use App\Events\UserNotificationChanged;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\AppointmentActivity;
+use App\Models\AuditLog;
 use App\Notifications\AppointmentReplyNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -86,6 +87,21 @@ class AppointmentController extends Controller
             'status' => 'pending',
         ]);
 
+        AuditLog::record(
+            $request->user(),
+            'appointments',
+            'created',
+            "{$request->user()->name} booked appointment {$appointment->appointment_number}.",
+            $appointment,
+            [
+                'appointment_number' => $appointment->appointment_number,
+                'purpose' => $appointment->purpose,
+                'department' => $appointment->department,
+                'scheduled_at' => $appointment->scheduled_at,
+            ],
+            $request
+        );
+
         broadcast(new AppointmentChanged($appointment, 'created'))->toOthers();
 
         return response()->json([
@@ -115,6 +131,9 @@ class AppointmentController extends Controller
             'status' => ['required', 'in:pending,scheduled,completed,cancelled'],
         ]);
 
+        $oldStatus = $appointment->status;
+        $oldAssignedToId = $appointment->assigned_to_id;
+
         $updates = [
             'status' => $validated['status'],
             'cancelled_at' => $validated['status'] === 'cancelled' ? now() : null,
@@ -138,10 +157,26 @@ class AppointmentController extends Controller
             'Appointment status changed to '.$validated['status'].'.'
         );
 
+        AuditLog::record(
+            $request->user(),
+            'appointments',
+            'status_updated',
+            "{$request->user()->name} changed appointment {$freshAppointment->appointment_number} from {$oldStatus} to {$freshAppointment->status}.",
+            $freshAppointment,
+            [
+                'appointment_number' => $freshAppointment->appointment_number,
+                'old_status' => $oldStatus,
+                'new_status' => $freshAppointment->status,
+                'old_assigned_to_id' => $oldAssignedToId,
+                'new_assigned_to_id' => $freshAppointment->assigned_to_id,
+            ],
+            $request
+        );
+
         broadcast(new AppointmentChanged($freshAppointment, 'status_updated'))->toOthers();
 
         return response()->json([
-            'data' => $appointment->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
+            'data' => $freshAppointment->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
             'message' => 'Appointment status updated successfully.',
         ]);
     }
@@ -161,6 +196,9 @@ class AppointmentController extends Controller
             abort(422, 'Only pending or scheduled appointments can be claimed.');
         }
 
+        $oldStatus = $appointment->status;
+        $oldAssignedToId = $appointment->assigned_to_id;
+
         $appointment->update([
             'assigned_to_id' => $request->user()->id,
             'status' => 'scheduled',
@@ -175,10 +213,26 @@ class AppointmentController extends Controller
             'Appointment was claimed and scheduled by '.$request->user()->name.'.'
         );
 
+        AuditLog::record(
+            $request->user(),
+            'appointments',
+            'assignment_updated',
+            "{$request->user()->name} claimed appointment {$freshAppointment->appointment_number}.",
+            $freshAppointment,
+            [
+                'appointment_number' => $freshAppointment->appointment_number,
+                'old_status' => $oldStatus,
+                'new_status' => $freshAppointment->status,
+                'old_assigned_to_id' => $oldAssignedToId,
+                'new_assigned_to_id' => $freshAppointment->assigned_to_id,
+            ],
+            $request
+        );
+
         broadcast(new AppointmentChanged($freshAppointment, 'assigned'))->toOthers();
 
         return response()->json([
-            'data' => $appointment->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
+            'data' => $freshAppointment->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
             'message' => 'Appointment claimed successfully.',
         ]);
     }

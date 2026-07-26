@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\StaffShift;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,6 +53,19 @@ class StaffShiftController extends Controller
             'status' => 'active',
         ]);
 
+        AuditLog::record(
+            $request->user(),
+            'staff_shifts',
+            'shift_started',
+            "{$request->user()->name} started a staff shift.",
+            $shift,
+            [
+                'shift_id' => $shift->id,
+                'started_at' => $shift->started_at,
+            ],
+            $request
+        );
+
         return response()->json([
             'data' => [
                 'is_on_duty' => true,
@@ -86,10 +100,26 @@ class StaffShiftController extends Controller
             'status' => 'ended',
         ]);
 
+        $freshShift = $shift->fresh();
+
+        AuditLog::record(
+            $request->user(),
+            'staff_shifts',
+            'shift_ended',
+            "{$request->user()->name} ended a staff shift.",
+            $freshShift,
+            [
+                'shift_id' => $freshShift->id,
+                'started_at' => $freshShift->started_at,
+                'ended_at' => $freshShift->ended_at,
+            ],
+            $request
+        );
+
         return response()->json([
             'data' => [
                 'is_on_duty' => false,
-                'shift' => $shift->fresh(),
+                'shift' => $freshShift,
             ],
             'message' => 'Shift ended successfully.',
         ]);

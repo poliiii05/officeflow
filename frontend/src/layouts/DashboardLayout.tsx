@@ -77,7 +77,7 @@ function getNavItems(user: AuthUser | null): NavItem[] {
       { label: 'Queue Monitor', to: '/super-admin/queue', icon: ClipboardList },
       { label: 'Audit Logs', to: '/super-admin/audit-logs', icon: History },
       { label: 'Analytics', to: '/super-admin/analytics', icon: BarChart3 },
-      { label: 'Settings', to: '/account/settings', icon: Settings },
+      { label: 'Settings', to: '/super-admin/settings', icon: Settings },
     ]
   }
 
