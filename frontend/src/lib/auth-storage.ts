@@ -5,9 +5,19 @@ export type AuthUser = {
   id: number
   name: string
   email: string
+  email_verified_at: string | null
+  google_id?: string | null
+  avatar_url?: string | null
   role: 'user' | 'staff' | 'super_admin'
   requester_type: 'employee' | 'visitor' | null
   terms_accepted_at: string | null
+}
+
+function getActiveStorage() {
+  if (localStorage.getItem(AUTH_TOKEN_KEY)) return localStorage
+  if (sessionStorage.getItem(AUTH_TOKEN_KEY)) return sessionStorage
+
+  return localStorage
 }
 
 export function saveAuthSession(token: string, user: AuthUser, remember = true) {
@@ -42,6 +52,5 @@ export function saveAuthToken(token: string, remember = true) {
 }
 
 export function saveStoredUser(user: AuthUser) {
-  const storage = getStoredToken() ? localStorage : sessionStorage
-  storage.setItem(AUTH_USER_KEY, JSON.stringify(user))
+  getActiveStorage().setItem(AUTH_USER_KEY, JSON.stringify(user))
 }

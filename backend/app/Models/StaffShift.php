@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'started_at',
     'ended_at',
     'status',
+    'end_reason',
 ])]
 class StaffShift extends Model
 {

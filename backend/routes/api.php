@@ -16,7 +16,8 @@
     use App\Http\Controllers\Api\V1\SuperAdmin\AnalyticsController;
     use App\Http\Controllers\Api\V1\SystemStatusController;
     use App\Http\Controllers\Api\V1\SuperAdmin\SystemSettingController;
-
+    use App\Http\Controllers\Api\V1\AccountController;
+    use App\Http\Controllers\Api\V1\StaffAnalyticsController;
 
     Route::prefix('v1')->group(function () {
         Route::get('/health', fn () => [
@@ -42,11 +43,14 @@
                 'data' => $request->user(),
             ]);
 
+            Route::get('/staff/analytics/productivity', [StaffAnalyticsController::class, 'productivity'])
+            ->middleware('throttle:180,1');
+
             Route::post('/auth/logout', [AuthController::class, 'logout']);
             Route::post('/auth/accept-terms', [AuthController::class, 'acceptTerms']);
 
             Route::patch('/tickets/{ticket}/status', [TicketController::class, 'updateStatus'])
-                ->middleware('throttle:180,1');
+            ->middleware('throttle:180,1');
 
             Route::patch('/tickets/{ticket}/assign', [TicketController::class, 'assign'])
                 ->middleware('throttle:180,1');
@@ -115,6 +119,15 @@
 
             Route::patch('/super-admin/settings', [SystemSettingController::class, 'update'])
             ->middleware('throttle:60,1');
+
+            Route::get('/account', [AccountController::class, 'show'])
+            ->middleware('throttle:180,1');
+
+            Route::patch('/account/profile', [AccountController::class, 'updateProfile'])
+            ->middleware('throttle:60,1');
+
+            Route::patch('/account/password', [AccountController::class, 'updatePassword'])
+            ->middleware('throttle:30,1');
             
         });
     });

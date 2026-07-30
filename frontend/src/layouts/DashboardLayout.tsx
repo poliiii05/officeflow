@@ -69,7 +69,7 @@ function getRoleBadge(user: AuthUser | null) {
 function getNavItems(user: AuthUser | null): NavItem[] {
   if (!user) return []
 
-  if (user.role === 'super_admin') {
+    if (user.role === 'super_admin') {
     return [
       { label: 'Overview', to: '/super-admin/dashboard', icon: LayoutDashboard },
       { label: 'Users', to: '/super-admin/users', icon: UserCog },
@@ -77,7 +77,8 @@ function getNavItems(user: AuthUser | null): NavItem[] {
       { label: 'Queue Monitor', to: '/super-admin/queue', icon: ClipboardList },
       { label: 'Audit Logs', to: '/super-admin/audit-logs', icon: History },
       { label: 'Analytics', to: '/super-admin/analytics', icon: BarChart3 },
-      { label: 'Settings', to: '/super-admin/settings', icon: Settings },
+      { label: 'System Settings', to: '/super-admin/settings', icon: Settings },
+      { label: 'Account Settings', to: '/super-admin/account-settings', icon: UserCog },
     ]
   }
 
@@ -88,7 +89,7 @@ function getNavItems(user: AuthUser | null): NavItem[] {
       { label: 'My Work', to: '/staff/work', icon: TicketCheck },
       { label: 'Records', to: '/staff/records', icon: FileClock },
       { label: 'Shift History', to: '/staff/shifts', icon: History },
-      { label: 'Settings', to: '/account/settings', icon: Settings },
+      { label: 'Settings', to: '/staff/settings', icon: Settings },
     ]
   }
 
@@ -97,7 +98,7 @@ function getNavItems(user: AuthUser | null): NavItem[] {
     { label: 'My Tickets', to: '/tickets', icon: TicketCheck },
     { label: 'Appointments', to: '/appointments', icon: CalendarCheck },
     { label: 'Notifications', to: '/notifications', icon: Bell },
-    { label: 'Settings', to: '/account/settings', icon: Settings },
+    { label: 'Settings', to: '/settings', icon: Settings },
   ]
 }
 

@@ -9,7 +9,7 @@ import {
   UserCog,
   Users,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -110,11 +110,6 @@ export function UserManagementPanel() {
   const [isConfirmingRoleChange, setIsConfirmingRoleChange] = useState(false)
   const [confirmationText, setConfirmationText] = useState('')
   const [error, setError] = useState('')
-
-  const selectedRoleDetails = useMemo(
-    () => editableRoleOptions.find((role) => role.value === selectedRole),
-    [selectedRole]
-  )
 
   const canConfirmRoleChange =
     selectedUser !== null &&

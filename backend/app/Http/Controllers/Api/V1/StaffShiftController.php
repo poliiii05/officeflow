@@ -14,16 +14,27 @@ class StaffShiftController extends Controller
     {
         $this->ensureStaffUser($request);
 
-        $shift = StaffShift::query()
-            ->where('user_id', $request->user()->id)
+        $user = $request->user();
+
+        $activeShift = StaffShift::query()
+            ->where('user_id', $user->id)
             ->whereNull('ended_at')
+            ->latest('started_at')
+            ->first();
+
+        $todayShift = StaffShift::query()
+            ->where('user_id', $user->id)
+            ->whereDate('started_at', now()->toDateString())
             ->latest('started_at')
             ->first();
 
         return response()->json([
             'data' => [
-                'is_on_duty' => (bool) $shift,
-                'shift' => $shift,
+                'is_on_duty' => (bool) $activeShift,
+                'can_start_shift' => ! $activeShift && ! $todayShift,
+                'has_shift_today' => (bool) $todayShift,
+                'shift' => $activeShift,
+                'today_shift' => $todayShift,
             ],
         ]);
     }
@@ -32,8 +43,10 @@ class StaffShiftController extends Controller
     {
         $this->ensureStaffUser($request);
 
+        $user = $request->user();
+
         $existingShift = StaffShift::query()
-            ->where('user_id', $request->user()->id)
+            ->where('user_id', $user->id)
             ->whereNull('ended_at')
             ->first();
 
@@ -41,23 +54,45 @@ class StaffShiftController extends Controller
             return response()->json([
                 'data' => [
                     'is_on_duty' => true,
+                    'can_start_shift' => false,
+                    'has_shift_today' => true,
                     'shift' => $existingShift,
+                    'today_shift' => $existingShift,
                 ],
                 'message' => 'You are already on duty.',
             ]);
         }
 
+        $todayShift = StaffShift::query()
+            ->where('user_id', $user->id)
+            ->whereDate('started_at', now()->toDateString())
+            ->latest('started_at')
+            ->first();
+
+        if ($todayShift) {
+            return response()->json([
+                'data' => [
+                    'is_on_duty' => false,
+                    'can_start_shift' => false,
+                    'has_shift_today' => true,
+                    'shift' => null,
+                    'today_shift' => $todayShift,
+                ],
+                'message' => 'Your shift for today is already recorded.',
+            ], 422);
+        }
+
         $shift = StaffShift::create([
-            'user_id' => $request->user()->id,
+            'user_id' => $user->id,
             'started_at' => now(),
             'status' => 'active',
         ]);
 
         AuditLog::record(
-            $request->user(),
+            $user,
             'staff_shifts',
             'shift_started',
-            "{$request->user()->name} started a staff shift.",
+            "{$user->name} started a staff shift.",
             $shift,
             [
                 'shift_id' => $shift->id,
@@ -69,7 +104,10 @@ class StaffShiftController extends Controller
         return response()->json([
             'data' => [
                 'is_on_duty' => true,
+                'can_start_shift' => false,
+                'has_shift_today' => true,
                 'shift' => $shift,
+                'today_shift' => $shift,
             ],
             'message' => 'Shift started successfully.',
         ], 201);
@@ -79,39 +117,58 @@ class StaffShiftController extends Controller
     {
         $this->ensureStaffUser($request);
 
+        $validated = $request->validate([
+            'end_reason' => ['nullable', 'in:early_out,end_shift'],
+        ]);
+
+        $user = $request->user();
+
         $shift = StaffShift::query()
-            ->where('user_id', $request->user()->id)
+            ->where('user_id', $user->id)
             ->whereNull('ended_at')
             ->latest('started_at')
             ->first();
 
         if (! $shift) {
+            $todayShift = StaffShift::query()
+                ->where('user_id', $user->id)
+                ->whereDate('started_at', now()->toDateString())
+                ->latest('started_at')
+                ->first();
+
             return response()->json([
                 'data' => [
                     'is_on_duty' => false,
+                    'can_start_shift' => ! $todayShift,
+                    'has_shift_today' => (bool) $todayShift,
                     'shift' => null,
+                    'today_shift' => $todayShift,
                 ],
                 'message' => 'No active shift found.',
             ]);
         }
 
+        $endReason = $validated['end_reason'] ?? 'end_shift';
+
         $shift->update([
             'ended_at' => now(),
             'status' => 'ended',
+            'end_reason' => $endReason,
         ]);
 
         $freshShift = $shift->fresh();
 
         AuditLog::record(
-            $request->user(),
+            $user,
             'staff_shifts',
             'shift_ended',
-            "{$request->user()->name} ended a staff shift.",
+            "{$user->name} ended a staff shift.",
             $freshShift,
             [
                 'shift_id' => $freshShift->id,
                 'started_at' => $freshShift->started_at,
                 'ended_at' => $freshShift->ended_at,
+                'end_reason' => $freshShift->end_reason,
             ],
             $request
         );
@@ -119,7 +176,10 @@ class StaffShiftController extends Controller
         return response()->json([
             'data' => [
                 'is_on_duty' => false,
-                'shift' => $freshShift,
+                'can_start_shift' => false,
+                'has_shift_today' => true,
+                'shift' => null,
+                'today_shift' => $freshShift,
             ],
             'message' => 'Shift ended successfully.',
         ]);
