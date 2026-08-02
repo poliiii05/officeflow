@@ -43,12 +43,12 @@ const summaryCards = [
 
 export function AuthLayout() {
   return (
-    <main className="min-h-screen bg-slate-50 p-3 text-foreground sm:p-4">
-      <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-7xl overflow-hidden rounded-2xl border bg-background shadow-sm lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="hidden bg-muted/35 px-8 py-8 lg:flex lg:items-center lg:justify-center">
-          <div className="w-full max-w-2xl space-y-7">
+    <main className="h-screen overflow-hidden bg-slate-50 p-2 text-foreground sm:p-3">
+      <div className="mx-auto grid h-full max-w-7xl overflow-hidden rounded-2xl border bg-background shadow-sm lg:grid-cols-[1.12fr_0.88fr]">
+        <section className="hidden bg-muted/35 px-7 py-6 lg:flex lg:items-center lg:justify-center">
+          <div className="w-full max-w-2xl space-y-5">
             <Link to="/" className="flex items-center gap-3">
-              <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
                 <ClipboardList className="size-5" />
               </div>
               <div>
@@ -59,11 +59,11 @@ export function AuthLayout() {
 
             <div>
               <p className="text-sm font-medium">Office service portal</p>
-              <h1 className="mt-3 max-w-2xl text-4xl font-semibold leading-tight">
+              <h1 className="mt-3 max-w-2xl text-3xl font-semibold leading-tight">
                 Keep office requests organized from first message to final resolution.
               </h1>
-              <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
-                Employees and visitors can submit requests, book appointments, and track updates while staff manage every queue in one workspace.
+              <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
+                Submit requests, book appointments, and track updates while staff manage every queue in one workspace.
               </p>
             </div>
 
@@ -72,22 +72,22 @@ export function AuthLayout() {
                 const Icon = item.icon
 
                 return (
-                  <div key={item.label} className="rounded-xl border bg-background p-4 shadow-sm">
+                  <div key={item.label} className="rounded-xl border bg-background p-3 shadow-sm">
                     <div className="flex items-center justify-between">
                       <Icon className="size-4 text-muted-foreground" />
-                      <span className="text-2xl font-semibold">{item.value}</span>
+                      <span className="text-xl font-semibold">{item.value}</span>
                     </div>
-                    <p className="mt-3 text-xs text-muted-foreground">{item.label}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">{item.label}</p>
                   </div>
                 )
               })}
             </div>
 
-            <div className="rounded-2xl border bg-background p-5 shadow-sm">
-              <div className="mb-4 flex items-center justify-between gap-4">
+            <div className="rounded-2xl border bg-background p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold">Today&apos;s queue</p>
-                  <p className="text-sm text-muted-foreground">Sample tickets and appointments</p>
+                  <p className="text-xs text-muted-foreground">Sample tickets and appointments</p>
                 </div>
 
                 <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700">
@@ -96,13 +96,13 @@ export function AuthLayout() {
                 </span>
               </div>
 
-              <ul className="space-y-3">
+              <ul className="space-y-2">
                 {previewTickets.map((ticket) => {
                   const Icon = ticket.icon
 
                   return (
                     <li key={ticket.id} className="flex items-center gap-3 rounded-xl bg-muted/45 p-3">
-                      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background">
                         <Icon className="size-4 text-muted-foreground" />
                       </div>
 
@@ -124,9 +124,9 @@ export function AuthLayout() {
           </div>
         </section>
 
-        <section className="flex min-h-[calc(100vh-2rem)] items-center justify-center px-5 py-8 sm:px-8">
+        <section className="flex h-full items-center justify-center px-5 py-5 sm:px-7">
           <div className="w-full max-w-md">
-            <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <div className="mb-5 flex items-center gap-3 lg:hidden">
               <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <ClipboardList className="size-5" />
               </div>

@@ -1,7 +1,7 @@
-import axios from 'axios'
-
 import { api } from '@/lib/api'
 import { clearAuthSession, type AuthUser, saveAuthSession } from '@/lib/auth-storage'
+
+export { getApiErrorMessage } from '@/lib/api'
 
 type AuthResponse = {
   data: {
@@ -12,9 +12,11 @@ type AuthResponse = {
   message: string
 }
 
-type ApiErrorResponse = {
-  message?: string
-  errors?: Record<string, string[]>
+type RegisterResponse = {
+  data: {
+    user: AuthUser
+  }
+  message: string
 }
 
 export type RegisterPayload = {
@@ -23,7 +25,7 @@ export type RegisterPayload = {
   email: string
   password: string
   password_confirmation: string
-  requester_type: 'employee' | 'visitor'
+  terms_accepted: boolean
 }
 
 export type LoginPayload = {
@@ -31,9 +33,8 @@ export type LoginPayload = {
   password: string
 }
 
-export async function registerUser(payload: RegisterPayload, remember = true) {
-  const response = await api.post<AuthResponse>('/auth/register', payload)
-  saveAuthSession(response.data.data.token, response.data.data.user, remember)
+export async function registerUser(payload: RegisterPayload) {
+  const response = await api.post<RegisterResponse>('/auth/register', payload)
   return response.data
 }
 
@@ -49,19 +50,6 @@ export async function logoutUser() {
   } finally {
     clearAuthSession()
   }
-}
-
-export function getApiErrorMessage(error: unknown, fallback: string) {
-  if (axios.isAxiosError<ApiErrorResponse>(error)) {
-    const data = error.response?.data
-    const firstValidationError = data?.errors
-      ? Object.values(data.errors).flat()[0]
-      : undefined
-
-    return firstValidationError ?? data?.message ?? fallback
-  }
-
-  return fallback
 }
 
 export async function fetchCurrentUser() {

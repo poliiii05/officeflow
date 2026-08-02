@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { AlertCircle, CalendarCheck, Clock, Layers, NotebookText, Send } from 'lucide-react'
-
+import { getApiErrorMessage } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -49,8 +49,7 @@ export function BookAppointmentDialog({ onCreated }: BookAppointmentDialogProps)
       setNotes('')
       setOpen(false)
     } catch (error) {
-      console.error(error)
-      setError('Unable to book appointment. Please make sure you are logged in and the selected schedule is in the future.')
+      setError(getApiErrorMessage(error, 'Unable to book appointment. Please check your details and try again.'))
     } finally {
       setIsSubmitting(false)
     }

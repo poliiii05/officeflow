@@ -18,6 +18,8 @@
     use App\Http\Controllers\Api\V1\SuperAdmin\SystemSettingController;
     use App\Http\Controllers\Api\V1\AccountController;
     use App\Http\Controllers\Api\V1\StaffAnalyticsController;
+    use App\Models\User;
+    use Illuminate\Auth\Events\Verified;
 
     Route::prefix('v1')->group(function () {
         Route::get('/health', fn () => [
@@ -27,6 +29,26 @@
             ],
             'message' => 'OfficeFlow API is healthy.',
         ]);
+        
+        Route::get('/email/verify/{id}/{hash}', function (Request $request, string $id, string $hash) {
+        if (! $request->hasValidSignature()) {
+            abort(403);
+        }
+
+        $user = User::findOrFail($id);
+
+        if (! hash_equals((string) $hash, sha1($user->getEmailForVerification()))) {
+            abort(403);
+        }
+
+        if (! $user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+            event(new Verified($user));
+        }
+
+        return redirect()->away(rtrim(config('services.frontend_url'), '/').'/login?verified=1');
+        })->middleware('throttle:6,1')->name('verification.verify');
+
 
         Route::get('/system/status', [SystemStatusController::class, 'show'])
         ->middleware('throttle:180,1');

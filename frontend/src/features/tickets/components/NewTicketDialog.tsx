@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { AlertCircle, FileText, Layers, Plus, Send, Tag } from 'lucide-react'
-
+import { getApiErrorMessage } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -52,8 +52,7 @@ export function NewTicketDialog({ onCreated }: NewTicketDialogProps) {
       setPriority('medium')
       setOpen(false)
     } catch (error) {
-      console.error(error)
-      setError('Unable to create ticket. Please make sure you are logged in and the backend server is running.')
+      setError(getApiErrorMessage(error, 'Unable to create ticket. Please check your details and try again.'))
     } finally {
       setIsSubmitting(false)
     }

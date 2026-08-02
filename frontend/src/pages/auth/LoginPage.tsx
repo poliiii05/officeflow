@@ -2,12 +2,12 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react'
 
-import { loginUser, getApiErrorMessage } from '@/features/auth/auth-api'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { getApiErrorMessage, loginUser } from '@/features/auth/auth-api'
 
 type LoginErrors = {
   email?: string
@@ -16,7 +16,25 @@ type LoginErrors = {
 }
 
 function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  const value = email.trim().toLowerCase()
+  const parts = value.split('@')
+
+  if (parts.length !== 2) return false
+
+  const [local, domain] = parts
+
+  if (!local || !domain) return false
+  if (local.startsWith('.') || local.endsWith('.') || local.includes('..')) return false
+  if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(local)) return false
+
+  const labels = domain.split('.')
+
+  if (labels.length < 2) return false
+  if (labels.some((label) => !label || label.startsWith('-') || label.endsWith('-'))) return false
+  if (!labels.every((label) => /^[a-z0-9-]+$/i.test(label))) return false
+  if (!/^[a-z]{2,}$/i.test(labels[labels.length - 1])) return false
+
+  return true
 }
 
 export function LoginPage() {
@@ -58,7 +76,7 @@ export function LoginPage() {
     try {
       await loginUser(
         {
-          email: form.email,
+          email: form.email.trim(),
           password: form.password,
         },
         remember
@@ -75,12 +93,12 @@ export function LoginPage() {
   }
 
   return (
-    <div className="rounded-xl border bg-card p-6 shadow-sm sm:p-7">
-      <div className="mb-6">
+    <div className="rounded-xl border bg-card p-5 shadow-sm sm:p-6">
+      <div className="mb-5">
         <p className="text-sm font-medium text-muted-foreground">Welcome back</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Login to OfficeFlow</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Access your tickets, appointment requests, and staff workspace.
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Access your tickets, appointment requests, and workspace.
         </p>
       </div>
 
@@ -97,7 +115,9 @@ export function LoginPage() {
             <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="email"
-              type="email"
+              type="text"
+              inputMode="email"
+              autoComplete="email"
               placeholder="name@example.com"
               className="pl-9"
               value={form.email}
@@ -109,13 +129,7 @@ export function LoginPage() {
         </div>
 
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="password">Password</Label>
-            <Link to="/forgot-password" className="text-sm text-primary hover:underline">
-              Forgot password?
-            </Link>
-          </div>
-
+          <Label htmlFor="password">Password</Label>
           <div className="relative">
             <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -142,10 +156,11 @@ export function LoginPage() {
         <div className="flex items-center gap-2">
           <Checkbox
             id="remember"
+            className="cursor-pointer"
             checked={remember}
             onCheckedChange={(checked) => setRemember(Boolean(checked))}
           />
-          <Label htmlFor="remember" className="text-sm font-normal text-muted-foreground">
+          <Label htmlFor="remember" className="cursor-pointer text-sm font-normal text-muted-foreground">
             Keep me signed in on this device
           </Label>
         </div>
@@ -156,25 +171,25 @@ export function LoginPage() {
         </Button>
       </form>
 
-      <div className="my-6 flex items-center gap-3">
+      <div className="my-5 flex items-center gap-3">
         <Separator className="flex-1" />
         <span className="text-xs text-muted-foreground">or</span>
         <Separator className="flex-1" />
       </div>
 
       <Button
-      className="w-full cursor-pointer"
-      variant="outline"
-      type="button"
-      onClick={() => {
-        window.location.replace(`${import.meta.env.VITE_API_URL}/auth/google/redirect`)
-      }}
-    >
-      <Mail className="size-4" />
-      Continue with Google
-    </Button>
+        className="w-full cursor-pointer"
+        variant="outline"
+        type="button"
+        onClick={() => {
+          window.location.replace(`${import.meta.env.VITE_API_URL}/auth/google/redirect`)
+        }}
+      >
+        <Mail className="size-4" />
+        Continue with Google
+      </Button>
 
-      <p className="mt-6 text-center text-sm text-muted-foreground">
+      <p className="mt-5 text-center text-sm text-muted-foreground">
         No account yet?{' '}
         <Link to="/register" className="font-medium text-primary hover:underline">
           Create one
