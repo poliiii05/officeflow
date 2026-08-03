@@ -4,6 +4,7 @@ import { clearAuthSession, getStoredToken } from '@/lib/auth-storage'
 
 type ApiErrorResponse = {
   message?: string
+  retry_after?: number
   errors?: Record<string, string[]>
 }
 
@@ -43,24 +44,35 @@ api.interceptors.response.use(
   }
 )
 
-export function getApiErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.') {
+export function getApiErrorMessage(
+  error: unknown,
+  fallback = 'Something went wrong. Please try again.'
+) {
   if (!axios.isAxiosError<ApiErrorResponse>(error)) {
     return fallback
   }
 
   if (!error.response) {
-    return 'Unable to reach OfficeFlow API. Make sure the backend server is running.'
+    return 'Unable to reach OfficeFlow API. Check your connection and make sure the backend server is running.'
   }
 
   const status = error.response.status
   const data = error.response.data
+
+  if (status === 429) {
+    const retryAfterValue =
+      data?.retry_after ?? error.response.headers['retry-after'] ?? 60
+
+    const retryAfter = Math.max(1, Number(retryAfterValue) || 60)
+
+    return `Too many attempts. Please try again in ${retryAfter} seconds.`
+  }
 
   const firstValidationError = data?.errors
     ? Object.values(data.errors).flat()[0]
     : undefined
 
   if (firstValidationError) return firstValidationError
-  if (status === 429) return 'Too many attempts. Please wait a minute before trying again.'
   if (status === 401) return 'Your session expired. Please login again.'
   if (status === 403) return 'You do not have permission to do that.'
   if (status >= 500) return 'OfficeFlow server error. Please try again later.'

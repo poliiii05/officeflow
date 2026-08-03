@@ -11,6 +11,7 @@ export type AuthUser = {
   role: 'user' | 'staff' | 'super_admin'
   requester_type: 'employee' | 'visitor' | null
   terms_accepted_at: string | null
+  onboarding_completed_at: string | null
 }
 
 function getActiveStorage() {

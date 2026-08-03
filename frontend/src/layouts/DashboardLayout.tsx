@@ -19,7 +19,16 @@ import { NavLink, useNavigate } from 'react-router-dom'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { logoutUser } from '@/features/auth/auth-api'
+import { RequesterOnboardingDialog } from '@/features/onboarding/components/RequesterOnboardingDialog'
 import { getStoredUser, type AuthUser } from '@/lib/auth-storage'
 import { cn } from '@/lib/utils'
 
@@ -69,8 +78,8 @@ function getRoleBadge(user: AuthUser | null) {
 function getNavItems(user: AuthUser | null): NavItem[] {
   if (!user) return []
 
-    if (user.role === 'super_admin') {
-    return [
+  if (user.role === 'super_admin') {
+  return [
       { label: 'Overview', to: '/super-admin/dashboard', icon: LayoutDashboard },
       { label: 'Users', to: '/super-admin/users', icon: UserCog },
       { label: 'Staff', to: '/super-admin/staff', icon: Users },
@@ -110,15 +119,26 @@ export function DashboardLayout({
   actions,
 }: DashboardLayoutProps) {
   const navigate = useNavigate()
-  const user = getStoredUser()
+  const [user, setUser] = useState<AuthUser | null>(() => getStoredUser())
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
   const navItems = useMemo(() => getNavItems(user), [user])
   const badgeLabel = badge ?? getRoleBadge(user)
 
   async function handleLogout() {
-    await logoutUser()
-    navigate('/', { replace: true })
+    if (isLoggingOut) return
+
+    setIsLoggingOut(true)
+
+    try {
+      await logoutUser()
+    } finally {
+      setIsLogoutDialogOpen(false)
+      setIsLoggingOut(false)
+      navigate('/', { replace: true })
+    }
   }
 
   const sidebar = (
@@ -173,7 +193,7 @@ export function DashboardLayout({
           type="button"
           variant="outline"
           className="mt-3 w-full cursor-pointer justify-start gap-2 bg-white"
-          onClick={handleLogout}
+          onClick={() => setIsLogoutDialogOpen(true)}
         >
           <LogOut className="size-4" />
           Logout
@@ -183,23 +203,24 @@ export function DashboardLayout({
   )
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#f4f7fb_54%,#f8fbf6_100%)] text-slate-950">
-      <div className="hidden fixed inset-y-0 left-0 z-30 lg:block">{sidebar}</div>
+    <>
+      <main className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#f4f7fb_54%,#f8fbf6_100%)] text-slate-950">
+        <div className="fixed inset-y-0 left-0 z-30 hidden lg:block">{sidebar}</div>
 
-      {isMobileSidebarOpen ? (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <button
-            type="button"
-            aria-label="Close navigation"
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setIsMobileSidebarOpen(false)}
-          />
-          <div className="relative h-full">{sidebar}</div>
-        </div>
-      ) : null}
+        {isMobileSidebarOpen ? (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <button
+              type="button"
+              aria-label="Close navigation"
+              className="absolute inset-0 bg-black/30"
+              onClick={() => setIsMobileSidebarOpen(false)}
+            />
+            <div className="relative h-full">{sidebar}</div>
+          </div>
+        ) : null}
 
-      <div className="lg:pl-72">
-        <header className="sticky top-0 z-20 border-b bg-white/90 backdrop-blur">
+        <div className="lg:pl-72">
+          <header className="sticky top-0 z-20 border-b bg-white/90 backdrop-blur">
           <div className="flex min-h-20 items-center justify-between gap-4 px-4 py-4 sm:px-6">
             <div className="flex min-w-0 items-center gap-3">
               <Button
@@ -235,12 +256,55 @@ export function DashboardLayout({
               {actions}
             </div>
           </div>
-        </header>
+          </header>
 
-        <div className="px-4 py-6 sm:px-6">
-          {children}
+          <div className="px-4 py-6 sm:px-6">
+            {children}
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+
+      {user?.role === 'user' && user.onboarding_completed_at === null ? (
+        <RequesterOnboardingDialog
+          user={user}
+          open
+          onCompleted={setUser}
+        />
+      ) : null}
+
+      <Dialog open={isLogoutDialogOpen} onOpenChange={setIsLogoutDialogOpen}>
+        <DialogContent className="!max-w-md">
+          <DialogHeader>
+            <div className="mb-2 flex size-11 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+              <LogOut className="size-5" />
+            </div>
+            <DialogTitle>Log out of OfficeFlow?</DialogTitle>
+            <DialogDescription>
+              You will need to sign in again to access your workspace.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="mt-2 gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer"
+              disabled={isLoggingOut}
+              onClick={() => setIsLogoutDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="cursor-pointer"
+              disabled={isLoggingOut}
+              onClick={() => void handleLogout()}
+            >
+              {isLoggingOut ? 'Logging out...' : 'Log out'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

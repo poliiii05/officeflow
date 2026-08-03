@@ -9,8 +9,7 @@ import {
   Lock,
   Mail,
 } from 'lucide-react'
-
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
@@ -123,7 +122,7 @@ export function RegisterPage() {
   const [errors, setErrors] = useState<RegisterErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [successDialogOpen, setSuccessDialogOpen] = useState(false)
-
+  const googleAuthUrl = `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/auth/google/redirect`
   const missingPasswordRequirements = useMemo(
     () => passwordRequirements.filter((rule) => !rule.isValid(form.password)),
     [form.password],
@@ -362,10 +361,16 @@ export function RegisterPage() {
           <Separator className="flex-1" />
         </div>
 
-        <Button className="w-full cursor-pointer" variant="outline" type="button">
-          <Mail className="size-4" />
-          Continue with Google
-        </Button>
+        <a
+            href={googleAuthUrl}
+            className={buttonVariants({
+              variant: 'outline',
+              className: 'w-full cursor-pointer',
+            })}
+          >
+            <Mail className="size-4" />
+            Continue with Google
+          </a>
 
         <p className="mt-5 text-center text-sm text-muted-foreground">
           Already have an account?{' '}

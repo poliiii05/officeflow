@@ -47,18 +47,25 @@
         }
 
         return redirect()->away(rtrim(config('services.frontend_url'), '/').'/login?verified=1');
-            })->middleware('throttle:6,1')->name('verification.verify');
+            })->middleware('throttle:email-verification')->name('verification.verify');
 
 
         Route::get('/system/status', [SystemStatusController::class, 'show'])
         ->middleware('throttle:180,1');
 
-        Route::prefix('auth')->middleware('throttle:10,1')->group(function () {
-            Route::post('/register', [AuthController::class, 'register']);
-            Route::post('/login', [AuthController::class, 'login']);
-            Route::get('/google/redirect', [AuthController::class, 'redirectToGoogle']);
-            Route::get('/google/callback', [AuthController::class, 'handleGoogleCallback']);
-        });
+        Route::prefix('auth')->group(function () {
+        Route::post('/register', [AuthController::class, 'register'])
+            ->middleware('throttle:auth-register');
+
+        Route::post('/login', [AuthController::class, 'login'])
+            ->middleware('throttle:auth-login');
+
+        Route::get('/google/redirect', [AuthController::class, 'redirectToGoogle'])
+            ->middleware('throttle:auth-google');
+
+        Route::get('/google/callback', [AuthController::class, 'handleGoogleCallback'])
+            ->middleware('throttle:auth-google');
+       });
 
         Route::middleware('auth:sanctum')->group(function () {
             Route::get('/me', fn (Request $request) => [
@@ -70,6 +77,7 @@
 
             Route::post('/auth/logout', [AuthController::class, 'logout']);
             Route::post('/auth/accept-terms', [AuthController::class, 'acceptTerms']);
+            Route::post('/auth/complete-onboarding', [AuthController::class, 'completeOnboarding']);
 
             Route::patch('/tickets/{ticket}/status', [TicketController::class, 'updateStatus'])
             ->middleware('throttle:180,1');

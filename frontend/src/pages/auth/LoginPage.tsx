@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react'
-
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { getApiErrorMessage, loginUser } from '@/features/auth/auth-api'
+import { getDashboardPath } from '@/lib/auth-redirect'
 
 type LoginErrors = {
   email?: string
@@ -43,6 +43,7 @@ export function LoginPage() {
   const [remember, setRemember] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<LoginErrors>({})
+  const googleAuthUrl = `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/auth/google/redirect`
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -74,7 +75,7 @@ export function LoginPage() {
     setErrors({})
 
     try {
-      await loginUser(
+      const response = await loginUser(
         {
           email: form.email.trim(),
           password: form.password,
@@ -82,7 +83,7 @@ export function LoginPage() {
         remember
       )
 
-      navigate('/dashboard')
+      navigate(getDashboardPath(response.data.user), { replace: true })
     } catch (error) {
       setErrors({
         form: getApiErrorMessage(error, 'Unable to login. Please try again.'),
@@ -177,17 +178,16 @@ export function LoginPage() {
         <Separator className="flex-1" />
       </div>
 
-      <Button
-        className="w-full cursor-pointer"
-        variant="outline"
-        type="button"
-        onClick={() => {
-          window.location.replace(`${import.meta.env.VITE_API_URL}/auth/google/redirect`)
-        }}
+      <a
+        href={googleAuthUrl}
+        className={buttonVariants({
+          variant: 'outline',
+          className: 'w-full cursor-pointer',
+        })}
       >
         <Mail className="size-4" />
         Continue with Google
-      </Button>
+      </a>
 
       <p className="mt-5 text-center text-sm text-muted-foreground">
         No account yet?{' '}

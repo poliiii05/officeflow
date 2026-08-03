@@ -21,6 +21,7 @@ use Laravel\Sanctum\HasApiTokens;
     'role',
     'requester_type',
     'terms_accepted_at',
+    'onboarding_completed_at',
 ])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmailContract
@@ -33,6 +34,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return [
             'email_verified_at' => 'datetime',
             'terms_accepted_at' => 'datetime',
+            'onboarding_completed_at' => 'datetime',
             'password' => 'hashed',
         ];
     }

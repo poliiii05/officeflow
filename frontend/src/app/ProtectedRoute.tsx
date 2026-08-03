@@ -3,8 +3,8 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
 import { fetchCurrentUser } from '@/features/auth/auth-api'
 import {
+  clearAuthSession,
   getStoredToken,
-  getStoredUser,
   saveAuthSession,
   saveAuthToken,
   saveStoredUser,
@@ -15,7 +15,11 @@ export function ProtectedRoute() {
   const [status, setStatus] = useState<'checking' | 'allowed' | 'blocked'>('checking')
 
   useEffect(() => {
+    let cancelled = false
+
     async function verifyAuth() {
+      setStatus('checking')
+
       const params = new URLSearchParams(location.search)
       const googleToken = params.get('google_token')
 
@@ -27,39 +31,39 @@ export function ProtectedRoute() {
           saveAuthSession(googleToken, user)
 
           window.history.replaceState(null, '', location.pathname)
-          setStatus('allowed')
+          if (!cancelled) setStatus('allowed')
         } catch {
+          clearAuthSession()
           window.history.replaceState(null, '', '/login?google_error=failed')
-          setStatus('blocked')
+          if (!cancelled) setStatus('blocked')
         }
 
         return
       }
 
       const storedToken = getStoredToken()
-      const storedUser = getStoredUser()
 
       if (!storedToken) {
-        setStatus('blocked')
-        return
-      }
-
-      if (storedUser) {
-        setStatus('allowed')
+        if (!cancelled) setStatus('blocked')
         return
       }
 
       try {
         const user = await fetchCurrentUser()
         saveStoredUser(user)
-        setStatus('allowed')
+        if (!cancelled) setStatus('allowed')
       } catch {
-        setStatus('blocked')
+        clearAuthSession()
+        if (!cancelled) setStatus('blocked')
       }
     }
 
     void verifyAuth()
-  }, [location.pathname, location.search])
+
+    return () => {
+      cancelled = true
+    }
+  }, [location.search])
 
   if (status === 'checking') {
     return <main className="min-h-screen bg-background" />

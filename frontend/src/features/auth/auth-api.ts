@@ -47,6 +47,8 @@ export async function loginUser(payload: LoginPayload, remember = true) {
 export async function logoutUser() {
   try {
     await api.post<{ message: string }>('/auth/logout')
+  } catch {
+    // Local sign-out must still finish if the API is temporarily unavailable.
   } finally {
     clearAuthSession()
   }
@@ -59,5 +61,10 @@ export async function fetchCurrentUser() {
 
 export async function acceptTerms() {
   const response = await api.post<{ data: { user: AuthUser } }>('/auth/accept-terms')
+  return response.data.data.user
+}
+
+export async function completeOnboarding() {
+  const response = await api.post<{ data: { user: AuthUser } }>('/auth/complete-onboarding')
   return response.data.data.user
 }

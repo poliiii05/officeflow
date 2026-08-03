@@ -80,6 +80,7 @@ class AuthController extends Controller
             'role' => 'user',
             'requester_type' => 'visitor',
             'terms_accepted_at' => now(),
+            'onboarding_completed_at' => null,
         ]);
 
         $user->sendEmailVerificationNotification();
@@ -172,6 +173,7 @@ class AuthController extends Controller
                     'role' => 'user',
                     'requester_type' => 'visitor',
                     'terms_accepted_at' => now(),
+                    'onboarding_completed_at' => null,
                 ]);
             } else {
                 $user->forceFill([
@@ -183,11 +185,19 @@ class AuthController extends Controller
 
             $token = $user->createToken('officeflow-web')->plainTextToken;
 
-            return redirect()->away($frontendUrl.'/dashboard?google_token='.urlencode($token));
-        } catch (Throwable) {
+            $dashboardPath = match ($user->role) {
+                'super_admin' => '/super-admin/dashboard',
+                'staff' => '/staff/dashboard',
+                default => '/dashboard',
+            };
+
+            return redirect()->away($frontendUrl.$dashboardPath.'?google_token='.urlencode($token));
+       } catch (Throwable $exception) {
+            report($exception);
+
             return redirect()->away($frontendUrl.'/login?google_error=failed');
         }
-    }
+            }
 
     public function acceptTerms(Request $request): JsonResponse
     {
@@ -202,6 +212,22 @@ class AuthController extends Controller
                 'user' => $user->fresh(),
             ],
             'message' => 'Terms accepted successfully.',
+        ]);
+    }
+
+    public function completeOnboarding(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $user->forceFill([
+            'onboarding_completed_at' => $user->onboarding_completed_at ?: now(),
+        ])->save();
+
+        return response()->json([
+            'data' => [
+                'user' => $user->fresh(),
+            ],
+            'message' => 'Onboarding completed successfully.',
         ]);
     }
 
