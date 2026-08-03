@@ -21,9 +21,24 @@ class TicketReplyNotification extends Notification
     {
         $this->activity->loadMissing(['ticket', 'user']);
 
+        [$title, $message] = match ($this->activity->type) {
+            'status_update' => [
+                'Ticket status updated',
+                $this->activity->message,
+            ],
+            'assigned' => [
+                'Ticket assignment updated',
+                $this->activity->message,
+            ],
+            default => [
+                'New staff reply',
+                $this->activity->user?->name.' replied to your ticket.',
+            ],
+        };
+
         return [
-            'title' => 'New staff reply',
-            'message' => $this->activity->user?->name.' replied to your ticket.',
+            'title' => $title,
+            'message' => $message,
             'ticket_id' => $this->activity->ticket_id,
             'ticket_number' => $this->activity->ticket?->ticket_number,
             'ticket_subject' => $this->activity->ticket?->subject,

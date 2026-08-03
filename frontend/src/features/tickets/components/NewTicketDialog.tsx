@@ -1,6 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { AlertCircle, FileText, Layers, Plus, Send, Tag } from 'lucide-react'
-import { getApiErrorMessage } from '@/lib/api'
+import {
+  AlertCircle,
+  ClipboardList,
+  Info,
+  Layers,
+  Plus,
+  Send,
+  Tag,
+} from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -13,7 +21,49 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { createTicket, type TicketPriority } from '@/features/tickets/ticket-api'
+import { createTicket } from '@/features/tickets/ticket-api'
+import { getApiErrorMessage } from '@/lib/api'
+
+const otherOption = 'Others'
+
+const serviceRequestCatalog = {
+  'General Services': [
+    'General Inquiry',
+    'Service Follow-up',
+    'Service Concern',
+    otherOption,
+  ],
+  'Records Office': [
+    'Document Request',
+    'Document Correction',
+    'Records Verification',
+    otherOption,
+  ],
+  'Treasury Office': [
+    'Payment Concern',
+    'Billing Inquiry',
+    'Receipt Request',
+    otherOption,
+  ],
+  'Permits Office': [
+    'Application Follow-up',
+    'Permit Correction',
+    'Requirements Assistance',
+    otherOption,
+  ],
+  'Online Services': [
+    'Portal Access',
+    'Account Concern',
+    'Online Service Issue',
+    otherOption,
+  ],
+  [otherOption]: [otherOption],
+} as const
+
+type Department = keyof typeof serviceRequestCatalog
+
+const defaultDepartment: Department = 'General Services'
+const defaultCategory = serviceRequestCatalog[defaultDepartment][0]
 
 type NewTicketDialogProps = {
   onCreated?: () => void
@@ -23,11 +73,34 @@ export function NewTicketDialog({ onCreated }: NewTicketDialogProps) {
   const [open, setOpen] = useState(false)
   const [subject, setSubject] = useState('')
   const [description, setDescription] = useState('')
-  const [department, setDepartment] = useState('IT Support')
-  const [category, setCategory] = useState('Technical Support')
-  const [priority, setPriority] = useState<TicketPriority>('medium')
+  const [department, setDepartment] = useState<Department>(defaultDepartment)
+  const [category, setCategory] = useState<string>(defaultCategory)
+  const [customDepartment, setCustomDepartment] = useState('')
+  const [customCategory, setCustomCategory] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  function resetForm() {
+    setSubject('')
+    setDescription('')
+    setDepartment(defaultDepartment)
+    setCategory(defaultCategory)
+    setCustomDepartment('')
+    setCustomCategory('')
+    setError('')
+  }
+
+  function handleDepartmentChange(nextDepartment: Department) {
+    setDepartment(nextDepartment)
+    setCategory(serviceRequestCatalog[nextDepartment][0])
+    setCustomDepartment('')
+    setCustomCategory('')
+  }
+
+  const resolvedDepartment =
+    department === otherOption ? customDepartment.trim() : department
+  const resolvedCategory = category === otherOption ? customCategory.trim() : category
+  const hasCompleteRouting = Boolean(resolvedDepartment && resolvedCategory)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -36,123 +109,163 @@ export function NewTicketDialog({ onCreated }: NewTicketDialogProps) {
 
     try {
       await createTicket({
-        subject,
-        description,
-        department,
-        category,
-        priority,
+        subject: subject.trim(),
+        description: description.trim(),
+        department: resolvedDepartment,
+        category: resolvedCategory,
+        // Receiving staff performs the actual priority triage.
+        priority: 'medium',
       })
 
-      onCreated?.()
-
-      setSubject('')
-      setDescription('')
-      setDepartment('IT Support')
-      setCategory('Technical Support')
-      setPriority('medium')
+      resetForm()
       setOpen(false)
-    } catch (error) {
-      setError(getApiErrorMessage(error, 'Unable to create ticket. Please check your details and try again.'))
+      onCreated?.()
+    } catch (submitError) {
+      setError(
+        getApiErrorMessage(
+          submitError,
+          'Unable to submit your service request. Please review the details and try again.'
+        )
+      )
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (!nextOpen && !isSubmitting) resetForm()
+      }}
+    >
       <DialogTrigger className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90">
         <Plus className="size-4" />
-        New ticket
+        New request
       </DialogTrigger>
 
-      <DialogContent className="!max-w-2xl overflow-hidden rounded-2xl p-0">
-        <div className="border-b bg-muted/30 px-6 py-5">
+      <DialogContent className="!max-w-2xl max-h-[calc(100vh-2rem)] justify-items-stretch gap-0 overflow-y-auto rounded-xl p-0">
+        <div className="w-full border-b bg-sky-50/70 px-6 py-5 pr-14">
           <DialogHeader>
-            <div className="mb-2 flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <FileText className="size-5" />
+            <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
+              <ClipboardList className="size-5" />
             </div>
-            <DialogTitle className="text-xl">Create new ticket</DialogTitle>
+            <DialogTitle className="text-xl">New service request</DialogTitle>
             <DialogDescription>
-              Send a request to the office team and track its progress.
+              Send a concern or document request to the appropriate office team.
             </DialogDescription>
           </DialogHeader>
         </div>
 
-        <form className="space-y-5 px-6 py-5" onSubmit={handleSubmit}>
+        <form className="grid w-full gap-5 px-6 py-5" onSubmit={handleSubmit}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="requestDepartment" className="flex items-center gap-2">
+                <Layers className="size-4 text-muted-foreground" />
+                Office
+              </Label>
+              <select
+                id="requestDepartment"
+                value={department}
+                onChange={(event) =>
+                  handleDepartmentChange(event.target.value as Department)
+                }
+                className="h-10 w-full cursor-pointer rounded-md border bg-background px-3 text-sm"
+              >
+                {Object.keys(serviceRequestCatalog).map((office) => (
+                  <option key={office} value={office}>
+                    {office}
+                  </option>
+                ))}
+              </select>
+
+              {department === otherOption ? (
+                <Input
+                  value={customDepartment}
+                  onChange={(event) => setCustomDepartment(event.target.value)}
+                  placeholder="Enter office name"
+                  aria-label="Other office name"
+                  maxLength={100}
+                  required
+                />
+              ) : null}
+            </div>
+
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="requestCategory" className="flex items-center gap-2">
+                <Tag className="size-4 text-muted-foreground" />
+                Service type
+              </Label>
+              <select
+                id="requestCategory"
+                value={category}
+                onChange={(event) => {
+                  setCategory(event.target.value)
+                  setCustomCategory('')
+                }}
+                className="h-10 w-full cursor-pointer rounded-md border bg-background px-3 text-sm"
+              >
+                {serviceRequestCatalog[department].map((service) => (
+                  <option key={service} value={service}>
+                    {service}
+                  </option>
+                ))}
+              </select>
+
+              {category === otherOption ? (
+                <Input
+                  value={customCategory}
+                  onChange={(event) => setCustomCategory(event.target.value)}
+                  placeholder="Enter service type"
+                  aria-label="Other service type"
+                  maxLength={100}
+                  required
+                />
+              ) : null}
+            </div>
+          </div>
+
+          {category === otherOption || department === otherOption ? (
+            <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <Info className="mt-0.5 size-4 shrink-0" />
+              <p className="leading-5">
+                Describe the service you need and your expected outcome below.
+                Staff will route the request to the correct office.
+              </p>
+            </div>
+          ) : null}
+
           <div className="space-y-2">
-            <Label htmlFor="ticketSubject">Subject</Label>
+            <Label htmlFor="requestSubject">Request summary</Label>
             <Input
-              id="ticketSubject"
+              id="requestSubject"
               value={subject}
               onChange={(event) => setSubject(event.target.value)}
-              placeholder="Printer offline - 3rd floor"
+              placeholder="Example: Follow up on submitted document"
+              maxLength={255}
               required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="ticketDescription">Description</Label>
+            <Label htmlFor="requestDescription">Details</Label>
             <Textarea
-              id="ticketDescription"
+              id="requestDescription"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="Describe the issue or request..."
-              className="min-h-28 resize-none"
+              placeholder="Explain what happened, what you need, and include any relevant date or reference number."
+              className="min-h-32 resize-none"
+              maxLength={5000}
               required
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="ticketDepartment" className="flex items-center gap-2">
-                <Layers className="size-4 text-muted-foreground" />
-                Department
-              </Label>
-              <select
-                id="ticketDepartment"
-                value={department}
-                onChange={(event) => setDepartment(event.target.value)}
-                className="h-10 w-full cursor-pointer rounded-md border bg-background px-3 text-sm"
-              >
-                <option>IT Support</option>
-                <option>Front Desk</option>
-                <option>Admin Office</option>
-                <option>HR Office</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ticketCategory" className="flex items-center gap-2">
-                <Tag className="size-4 text-muted-foreground" />
-                Category
-              </Label>
-              <select
-                id="ticketCategory"
-                value={category}
-                onChange={(event) => setCategory(event.target.value)}
-                className="h-10 w-full cursor-pointer rounded-md border bg-background px-3 text-sm"
-              >
-                <option>Technical Support</option>
-                <option>Document Request</option>
-                <option>Facility Request</option>
-                <option>General Request</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ticketPriority">Priority</Label>
-              <select
-                id="ticketPriority"
-                value={priority}
-                onChange={(event) => setPriority(event.target.value as TicketPriority)}
-                className="h-10 w-full cursor-pointer rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
+          <div className="flex items-start gap-3 rounded-lg bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+            <Info className="mt-0.5 size-4 shrink-0" />
+            <p className="leading-5">
+              The receiving office will assess the request priority after review.
+            </p>
           </div>
 
           {error ? (
@@ -162,8 +275,17 @@ export function NewTicketDialog({ onCreated }: NewTicketDialogProps) {
             </div>
           ) : null}
 
-          <Button className="h-11 w-full cursor-pointer" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Creating ticket...' : 'Create ticket'}
+          <Button
+            className="h-11 w-full cursor-pointer"
+            type="submit"
+            disabled={
+              isSubmitting ||
+              !subject.trim() ||
+              !description.trim() ||
+              !hasCompleteRouting
+            }
+          >
+            {isSubmitting ? 'Submitting request...' : 'Submit request'}
             <Send className="size-4" />
           </Button>
         </form>

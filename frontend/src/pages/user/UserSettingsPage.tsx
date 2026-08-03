@@ -5,10 +5,11 @@ export function UserSettingsPage() {
   return (
     <DashboardLayout
       title="Settings"
-      description="Manage your profile, email, password, and requester preferences."
+      description="Manage your profile, verified email, and sign-in security."
       badge="Account settings"
     >
       <UserSettingsPanel />
     </DashboardLayout>
   )
 }
+

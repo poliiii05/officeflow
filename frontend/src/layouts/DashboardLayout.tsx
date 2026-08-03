@@ -54,7 +54,7 @@ function getWorkspaceLabel(user: AuthUser | null) {
   if (user.role === 'super_admin') return 'Super admin workspace'
   if (user.role === 'staff') return 'Staff workspace'
 
-  return 'User workspace'
+  return 'Requester workspace'
 }
 
 function getRoleBadge(user: AuthUser | null) {
@@ -63,7 +63,7 @@ function getRoleBadge(user: AuthUser | null) {
   if (user.role === 'super_admin') return 'Super Admin'
   if (user.role === 'staff') return 'Staff'
 
-  return user.requester_type === 'employee' ? 'Employee Account' : 'Visitor Account'
+  return 'Requester'
 }
 
 function getNavItems(user: AuthUser | null): NavItem[] {
@@ -93,9 +93,9 @@ function getNavItems(user: AuthUser | null): NavItem[] {
     ]
   }
 
-  return [
+    return [
     { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-    { label: 'My Tickets', to: '/tickets', icon: TicketCheck },
+    { label: 'My Requests', to: '/tickets', icon: TicketCheck },
     { label: 'Appointments', to: '/appointments', icon: CalendarCheck },
     { label: 'Notifications', to: '/notifications', icon: Bell },
     { label: 'Settings', to: '/settings', icon: Settings },

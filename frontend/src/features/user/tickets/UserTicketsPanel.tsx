@@ -1,4 +1,12 @@
-import { CalendarClock, FileText, Search, TicketCheck } from 'lucide-react'
+import {
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Inbox,
+  Search,
+  TicketCheck,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
@@ -9,18 +17,29 @@ import { TicketDetailsDialog } from '@/features/tickets/components/TicketDetails
 import { getTicket, getTickets, type Ticket } from '@/features/tickets/ticket-api'
 import { cn } from '@/lib/utils'
 
+type UserTicketsPanelProps = {
+  refreshKey?: number
+}
+
+type PaginationMeta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+const emptyMeta: PaginationMeta = {
+  current_page: 1,
+  last_page: 1,
+  per_page: 10,
+  total: 0,
+}
+
 const statusStyles: Record<string, string> = {
   open: 'bg-sky-100 text-sky-700',
   in_progress: 'bg-amber-100 text-amber-700',
   resolved: 'bg-emerald-100 text-emerald-700',
   closed: 'bg-slate-200 text-slate-700',
-}
-
-const priorityStyles: Record<string, string> = {
-  low: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  medium: 'border-sky-200 bg-sky-50 text-sky-700',
-  high: 'border-amber-200 bg-amber-50 text-amber-700',
-  urgent: 'border-red-200 bg-red-50 text-red-700',
 }
 
 const statusTabs = [
@@ -29,13 +48,29 @@ const statusTabs = [
   { label: 'In progress', value: 'in_progress' },
   { label: 'Resolved', value: 'resolved' },
   { label: 'Closed', value: 'closed' },
-]
+] as const
 
 function formatStatus(status: string) {
-  return status.replace('_', ' ')
+  return status.replaceAll('_', ' ')
 }
 
-export function UserTicketsPanel() {
+function formatSubmittedAt(value: string) {
+  const date = new Date(value)
+
+  return {
+    date: date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+    time: date.toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    }),
+  }
+}
+
+export function UserTicketsPanel({ refreshKey = 0 }: UserTicketsPanelProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const openTicketId = Number(searchParams.get('open'))
 
@@ -44,13 +79,8 @@ export function UserTicketsPanel() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
-  const [meta, setMeta] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-  })
-  const [isLoading, setIsLoading] = useState(false)
+  const [meta, setMeta] = useState<PaginationMeta>(emptyMeta)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
   const selectedTicket = useMemo(
@@ -59,36 +89,48 @@ export function UserTicketsPanel() {
   )
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      async function loadTickets() {
-        setIsLoading(true)
-        setError('')
+    let cancelled = false
 
-        try {
-          const response = await getTickets({
-            queue: 'all',
-            status,
-            search,
-            page,
-            per_page: 10,
-          })
+    const timeout = window.setTimeout(
+      () => {
+        async function loadTickets() {
+          setIsLoading(true)
+          setError('')
 
-          setTickets(response.data)
-          setMeta(response.meta)
-        } catch {
-          setError('Unable to load tickets.')
-        } finally {
-          setIsLoading(false)
+          try {
+            const response = await getTickets({
+              queue: 'all',
+              status,
+              search: search.trim(),
+              page,
+              per_page: 10,
+            })
+
+            if (cancelled) return
+
+            setTickets(response.data)
+            setMeta(response.meta)
+          } catch {
+            if (!cancelled) setError('Unable to load your service requests.')
+          } finally {
+            if (!cancelled) setIsLoading(false)
+          }
         }
-      }
 
-      void loadTickets()
-    }, 250)
+        void loadTickets()
+      },
+      search ? 250 : 0
+    )
 
-    return () => window.clearTimeout(timeout)
-  }, [page, search, status])
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [page, refreshKey, search, status])
 
   useEffect(() => {
+    let cancelled = false
+
     if (!openTicketId) {
       setOpenedTicket(null)
       return
@@ -102,13 +144,17 @@ export function UserTicketsPanel() {
     async function loadOpenedTicket() {
       try {
         const response = await getTicket(openTicketId)
-        setOpenedTicket(response.data)
+        if (!cancelled) setOpenedTicket(response.data)
       } catch {
-        setError('Unable to open the selected ticket.')
+        if (!cancelled) setError('Unable to open the selected service request.')
       }
     }
 
     void loadOpenedTicket()
+
+    return () => {
+      cancelled = true
+    }
   }, [openTicketId, tickets])
 
   function closeSelectedTicket() {
@@ -120,15 +166,15 @@ export function UserTicketsPanel() {
 
   return (
     <section className="mx-auto max-w-7xl overflow-hidden rounded-lg border bg-white shadow-sm">
-      <div className="flex flex-col gap-4 border-b bg-sky-50/50 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-5 border-b bg-slate-50/70 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
         <div className="flex items-center gap-3">
-          <div className="flex size-12 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
             <TicketCheck className="size-5" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold">Ticket requests</h2>
+            <h2 className="text-lg font-semibold">Service request history</h2>
             <p className="text-sm text-muted-foreground">
-              Track open, active, resolved, and closed tickets.
+              Follow each request from submission through completion.
             </p>
           </div>
         </div>
@@ -141,13 +187,13 @@ export function UserTicketsPanel() {
               setSearch(event.target.value)
               setPage(1)
             }}
-            placeholder="Search subject, number, department..."
-            className="pl-9"
+            placeholder="Search request, number, office, or service..."
+            className="bg-white pl-9"
           />
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-b px-6 py-4">
+      <div className="flex gap-2 overflow-x-auto border-b px-5 py-3 lg:px-6">
         {statusTabs.map((tab) => (
           <button
             key={tab.label}
@@ -157,7 +203,7 @@ export function UserTicketsPanel() {
               setPage(1)
             }}
             className={cn(
-              'h-9 cursor-pointer rounded-full border px-4 text-sm font-medium transition-colors',
+              'h-9 shrink-0 cursor-pointer rounded-full border px-4 text-sm font-medium transition-colors',
               status === tab.value
                 ? 'border-primary bg-primary text-primary-foreground'
                 : 'bg-white text-muted-foreground hover:bg-muted'
@@ -169,65 +215,102 @@ export function UserTicketsPanel() {
       </div>
 
       {error ? (
-        <div className="border-b border-red-200 bg-red-50 px-6 py-3 text-sm text-red-700">
+        <div className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm text-red-700 lg:px-6">
           {error}
         </div>
       ) : null}
 
+      <div className="hidden grid-cols-[minmax(0,1.35fr)_minmax(180px,0.85fr)_170px_130px_130px] gap-5 border-b bg-slate-50 px-6 py-3 text-xs font-semibold uppercase text-muted-foreground lg:grid">
+        <span>Request</span>
+        <span>Office and service</span>
+        <span>Submitted</span>
+        <span>Status</span>
+        <span>Action</span>
+      </div>
+
       <div className="divide-y">
         {isLoading ? (
-          <div className="px-6 py-10 text-sm text-muted-foreground">Loading tickets...</div>
-        ) : tickets.length ? (
-          tickets.map((ticket) => (
-            <article
-              key={ticket.id}
-              className="grid gap-4 px-6 py-5 lg:grid-cols-[1fr_auto] lg:items-center"
+          Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="grid animate-pulse gap-4 px-5 py-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(180px,0.85fr)_170px_130px_130px] lg:items-center lg:gap-5 lg:px-6"
             >
-              <div className="flex min-w-0 gap-4">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
-                  <FileText className="size-5" />
-                </div>
-
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-semibold">{ticket.subject}</h3>
-                    <Badge className={cn('border-0 capitalize', statusStyles[ticket.status])}>
-                      {formatStatus(ticket.status)}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className={cn('capitalize', priorityStyles[ticket.priority])}
-                    >
-                      {ticket.priority}
-                    </Badge>
-                  </div>
-
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {ticket.ticket_number} - {ticket.department} - {ticket.category}
-                  </p>
-                  <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                    <CalendarClock className="size-3.5" />
-                    Created {new Date(ticket.created_at).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              <TicketDetailsDialog ticket={ticket} mode="activity" />
-            </article>
+              <div className="h-11 rounded-md bg-slate-100" />
+              <div className="h-9 rounded-md bg-slate-100" />
+              <div className="h-9 rounded-md bg-slate-100" />
+              <div className="h-7 rounded-full bg-slate-100" />
+              <div className="h-9 rounded-md bg-slate-100" />
+            </div>
           ))
+        ) : tickets.length ? (
+          tickets.map((ticket) => {
+            const submittedAt = formatSubmittedAt(ticket.created_at)
+
+            return (
+              <article
+                key={ticket.id}
+                className="grid gap-4 px-5 py-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(180px,0.85fr)_170px_130px_130px] lg:items-center lg:gap-5 lg:px-6"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
+                    <FileText className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="truncate font-semibold">{ticket.subject}</h3>
+                    <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                      {ticket.ticket_number}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="min-w-0 text-sm">
+                  <p className="truncate font-medium">{ticket.department}</p>
+                  <p className="mt-0.5 truncate text-muted-foreground">{ticket.category}</p>
+                </div>
+
+                <div className="flex items-start gap-2 text-sm">
+                  <CalendarClock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div>
+                    <p className="font-medium">{submittedAt.date}</p>
+                    <p className="text-muted-foreground">{submittedAt.time}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      'border-0 capitalize',
+                      statusStyles[ticket.status] ?? 'bg-slate-100 text-slate-700'
+                    )}
+                  >
+                    {formatStatus(ticket.status)}
+                  </Badge>
+                </div>
+
+                <div className="lg:flex lg:justify-start">
+                  <TicketDetailsDialog ticket={ticket} mode="activity" />
+                </div>
+              </article>
+            )
+          })
         ) : (
-          <div className="px-6 py-12 text-center">
-            <p className="font-medium">No tickets found</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Your submitted tickets will appear here.
+          <div className="flex flex-col items-center px-6 py-14 text-center">
+            <div className="flex size-12 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+              <Inbox className="size-5" />
+            </div>
+            <p className="mt-4 font-medium">No service requests found</p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              Submitted requests that match this view will appear here.
             </p>
           </div>
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t bg-slate-50 px-6 py-4">
+      <div className="flex flex-col gap-3 border-t bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
         <p className="text-sm text-muted-foreground">
-          Page {meta.current_page} of {meta.last_page} - {meta.total} tickets
+          Page {meta.current_page} of {meta.last_page} - {meta.total} request
+          {meta.total === 1 ? '' : 's'}
         </p>
 
         <div className="flex gap-2">
@@ -235,19 +318,21 @@ export function UserTicketsPanel() {
             type="button"
             variant="outline"
             className="cursor-pointer"
-            disabled={page <= 1}
+            disabled={page <= 1 || isLoading}
             onClick={() => setPage((current) => Math.max(current - 1, 1))}
           >
+            <ChevronLeft className="size-4" />
             Previous
           </Button>
           <Button
             type="button"
             variant="outline"
             className="cursor-pointer"
-            disabled={page >= meta.last_page}
+            disabled={page >= meta.last_page || isLoading}
             onClick={() => setPage((current) => Math.min(current + 1, meta.last_page))}
           >
             Next
+            <ChevronRight className="size-4" />
           </Button>
         </div>
       </div>
@@ -257,8 +342,8 @@ export function UserTicketsPanel() {
           ticket={selectedTicket}
           mode="activity"
           open={Boolean(selectedTicket)}
-          onOpenChange={(open) => {
-            if (!open) closeSelectedTicket()
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) closeSelectedTicket()
           }}
           hideTrigger
         />

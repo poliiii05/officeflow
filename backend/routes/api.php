@@ -47,7 +47,7 @@
         }
 
         return redirect()->away(rtrim(config('services.frontend_url'), '/').'/login?verified=1');
-        })->middleware('throttle:6,1')->name('verification.verify');
+            })->middleware('throttle:6,1')->name('verification.verify');
 
 
         Route::get('/system/status', [SystemStatusController::class, 'show'])
@@ -111,6 +111,9 @@
 
             Route::get('/notifications', [NotificationController::class, 'index'])
             ->middleware('throttle:180,1');
+
+            Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markAsRead'])
+            ->middleware('throttle:120,1');
 
             Route::post('/notifications/read', [NotificationController::class, 'markAllAsRead'])
             ->middleware('throttle:60,1');

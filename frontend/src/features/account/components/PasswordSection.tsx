@@ -1,4 +1,4 @@
-import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole, Save, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -9,34 +9,46 @@ import { getApiErrorMessage } from '@/features/auth/auth-api'
 import type { AuthUser } from '@/lib/auth-storage'
 import { cn } from '@/lib/utils'
 
-export function PasswordSection({ user }: { user: AuthUser }) {
-  const isGoogleAccount = Boolean(user.google_id)
+type PasswordField = 'current' | 'new' | 'confirmation'
 
+export function PasswordSection({
+  user,
+  className,
+}: {
+  user: AuthUser
+  className?: string
+}) {
+  const isGoogleAccount = Boolean(user.google_id)
   const [currentPassword, setCurrentPassword] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
-  const [showPasswords, setShowPasswords] = useState(false)
+  const [visibleField, setVisibleField] = useState<PasswordField | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
-  const passwordChecks = useMemo(
+  const passwordRequirements = useMemo(
     () => [
       { label: 'At least 8 characters', valid: password.length >= 8 },
-      { label: 'Has at least 1 number', valid: /\d/.test(password) },
-      { label: 'Has at least 1 symbol', valid: /[^A-Za-z0-9]/.test(password) },
+      { label: 'Includes 1 number', valid: /\d/.test(password) },
+      { label: 'Includes 1 special character', valid: /[^A-Za-z0-9]/.test(password) },
       {
-        label: 'Passwords match',
-        valid: password.length > 0 && password === passwordConfirmation,
+        label: 'Different from current password',
+        valid: password.length > 0 && password !== currentPassword,
       },
     ],
-    [password, passwordConfirmation]
+    [currentPassword, password]
   )
 
+  const missingRequirements = passwordRequirements.filter((requirement) => !requirement.valid)
+  const passwordMismatch =
+    passwordConfirmation.length > 0 && password !== passwordConfirmation
   const hasPasswordInput = Boolean(currentPassword || password || passwordConfirmation)
-  const shouldShowRules = Boolean(password || passwordConfirmation)
   const canUpdatePassword =
-    currentPassword.length > 0 && passwordChecks.every((check) => check.valid)
+    currentPassword.length > 0 &&
+    passwordConfirmation.length > 0 &&
+    !passwordMismatch &&
+    missingRequirements.length === 0
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -56,6 +68,7 @@ export function PasswordSection({ user }: { user: AuthUser }) {
       setCurrentPassword('')
       setPassword('')
       setPasswordConfirmation('')
+      setVisibleField(null)
       setMessage(response.message)
     } catch (passwordError) {
       setError(getApiErrorMessage(passwordError, 'Unable to update password.'))
@@ -66,28 +79,21 @@ export function PasswordSection({ user }: { user: AuthUser }) {
 
   if (isGoogleAccount) {
     return (
-      <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
+      <section className={cn('overflow-hidden rounded-lg border bg-white shadow-sm', className)}>
         <div className="border-b bg-slate-50 px-5 py-4">
           <h2 className="font-semibold">Password</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Google controls password security for this account.
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">Google manages this account's password.</p>
         </div>
 
-        <div className="p-5">
-          <div className="rounded-lg border bg-violet-50 p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
-                <ShieldCheck className="size-5" />
-              </div>
-
-              <div>
-                <p className="font-medium">Google sign-in connected</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Password changes are managed from the connected Google account.
-                </p>
-              </div>
-            </div>
+        <div className="flex items-start gap-3 p-5">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+            <ShieldCheck className="size-5" />
+          </div>
+          <div>
+            <p className="font-medium">Password managed by Google</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Update your password and recovery options from the connected Google account.
+            </p>
           </div>
         </div>
       </section>
@@ -95,10 +101,15 @@ export function PasswordSection({ user }: { user: AuthUser }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="overflow-hidden rounded-lg border bg-white shadow-sm">
+    <form
+      onSubmit={handleSubmit}
+      className={cn('overflow-hidden rounded-lg border bg-white shadow-sm', className)}
+    >
       <div className="border-b bg-slate-50 px-5 py-4">
         <h2 className="font-semibold">Password</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Modify your current password.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Use your current password to set a new one.
+        </p>
       </div>
 
       <div className="space-y-5 p-5">
@@ -110,52 +121,66 @@ export function PasswordSection({ user }: { user: AuthUser }) {
 
         <div className="grid gap-4 lg:grid-cols-3">
           <PasswordInput
+            id="current-password"
             label="Current password"
             value={currentPassword}
-            onChange={setCurrentPassword}
-            show={showPasswords}
+            onChange={(value) => {
+              setCurrentPassword(value)
+              setMessage('')
+            }}
+            visible={visibleField === 'current'}
+            onToggle={() => setVisibleField(visibleField === 'current' ? null : 'current')}
+            autoComplete="current-password"
           />
           <PasswordInput
+            id="new-password"
             label="New password"
             value={password}
-            onChange={setPassword}
-            show={showPasswords}
+            onChange={(value) => {
+              setPassword(value)
+              setMessage('')
+            }}
+            visible={visibleField === 'new'}
+            onToggle={() => setVisibleField(visibleField === 'new' ? null : 'new')}
+            autoComplete="new-password"
           />
           <PasswordInput
+            id="confirm-password"
             label="Confirm password"
             value={passwordConfirmation}
-            onChange={setPasswordConfirmation}
-            show={showPasswords}
+            onChange={(value) => {
+              setPasswordConfirmation(value)
+              setMessage('')
+            }}
+            visible={visibleField === 'confirmation'}
+            onToggle={() =>
+              setVisibleField(visibleField === 'confirmation' ? null : 'confirmation')
+            }
+            autoComplete="new-password"
           />
         </div>
 
-        {shouldShowRules ? (
+        {password && missingRequirements.length ? (
           <div className="grid gap-2 rounded-lg border bg-slate-50 p-4 sm:grid-cols-2">
-            {passwordChecks.map((check) => (
-              <p
-                key={check.label}
-                className={cn(
-                  'flex items-center gap-2 text-sm',
-                  check.valid ? 'text-emerald-700' : 'text-red-600'
-                )}
-              >
-                <CheckCircle2 className="size-4" />
-                {check.label}
+            {missingRequirements.map((requirement) => (
+              <p key={requirement.label} className="flex items-center gap-2 text-sm text-red-600">
+                <KeyRound className="size-4" />
+                {requirement.label}
               </p>
             ))}
           </div>
         ) : null}
 
-        <div className="flex min-h-9 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          {hasPasswordInput ? (
-            <button
-              type="button"
-              className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground"
-              onClick={() => setShowPasswords((value) => !value)}
-            >
-              {showPasswords ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              {showPasswords ? 'Hide passwords' : 'Show passwords'}
-            </button>
+        {passwordMismatch ? (
+          <p className="text-sm text-red-600">Password did not match.</p>
+        ) : null}
+
+        <div className="flex min-h-9 items-center justify-between gap-3">
+          {message ? (
+            <p className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+              <CheckCircle2 className="size-4" />
+              {message}
+            </p>
           ) : (
             <span />
           )}
@@ -163,43 +188,57 @@ export function PasswordSection({ user }: { user: AuthUser }) {
           {hasPasswordInput ? (
             <Button
               type="submit"
-              className="cursor-pointer gap-2"
+              className="cursor-pointer"
               disabled={isSaving || !canUpdatePassword}
             >
-              {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              {isSaving ? <Loader2 className="size-4 animate-spin" /> : null}
               Update password
             </Button>
           ) : null}
         </div>
-
-        {message ? <p className="text-sm font-medium text-emerald-700">{message}</p> : null}
       </div>
     </form>
   )
 }
 
 function PasswordInput({
+  id,
   label,
   value,
   onChange,
-  show,
+  visible,
+  onToggle,
+  autoComplete,
 }: {
+  id: string
   label: string
   value: string
   onChange: (value: string) => void
-  show: boolean
+  visible: boolean
+  onToggle: () => void
+  autoComplete: string
 }) {
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
+      <Label htmlFor={id}>{label}</Label>
       <div className="relative">
-        <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          type={show ? 'text' : 'password'}
+          id={id}
+          type={visible ? 'text' : 'password'}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="pl-9"
+          className="px-9"
+          autoComplete={autoComplete}
         />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground"
+          aria-label={visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+        >
+          {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </button>
       </div>
     </div>
   )

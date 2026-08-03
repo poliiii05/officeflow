@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { EmailSection } from '@/features/account/components/EmailSection'
@@ -17,7 +18,7 @@ export function UserSettingsPanel() {
         setUser(account)
         saveStoredUser(account)
       } catch {
-        setError('Unable to load account settings.')
+        setError('Unable to load account settings. Please refresh and try again.')
       }
     }
 
@@ -25,18 +26,31 @@ export function UserSettingsPanel() {
   }, [])
 
   if (error) {
-    return <div className="rounded-lg border bg-white p-5 text-sm text-red-700">{error}</div>
+    return (
+      <div className="mx-auto max-w-6xl rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+        {error}
+      </div>
+    )
   }
 
   if (!user) {
-    return <div className="rounded-lg border bg-white p-5 text-sm text-muted-foreground">Loading settings...</div>
+    return (
+      <div className="mx-auto flex min-h-44 max-w-6xl items-center justify-center rounded-lg border bg-white text-sm text-muted-foreground">
+        <Loader2 className="mr-2 size-4 animate-spin" />
+        Loading settings...
+      </div>
+    )
   }
 
   return (
-    <section className="mx-auto max-w-6xl space-y-5">
-      <ProfileSection user={user} onUserUpdated={setUser} allowRequesterType />
-      <EmailSection user={user} />
-      <PasswordSection user={user} />
+    <section className="mx-auto grid max-w-5xl items-start gap-5 lg:grid-cols-12">
+      <ProfileSection
+        user={user}
+        onUserUpdated={setUser}
+        className="lg:col-span-7"
+      />
+      <EmailSection user={user} className="lg:col-span-5" />
+      <PasswordSection user={user} className="lg:col-span-12" />
     </section>
   )
-}   
+}

@@ -19,21 +19,14 @@ class AccountController extends Controller
 
     public function updateProfile(Request $request): JsonResponse
     {
-        $user = $request->user();
-
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'requester_type' => [
-                $user->role === 'user' ? 'required' : 'nullable',
-                'in:employee,visitor',
-            ],
+            'name' => ['required', 'string', 'min:2', 'max:255'],
         ]);
 
+        $user = $request->user();
+
         $user->forceFill([
-            'name' => $validated['name'],
-            'requester_type' => $user->role === 'user'
-                ? $validated['requester_type']
-                : $user->requester_type,
+            'name' => trim($validated['name']),
         ])->save();
 
         return response()->json([
@@ -44,12 +37,23 @@ class AccountController extends Controller
 
     public function updatePassword(Request $request): JsonResponse
     {
+        $user = $request->user();
+
+        if ($user->google_id) {
+            return response()->json([
+                'message' => 'Password changes are managed through your Google account.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'current_password' => ['required', 'string'],
-            'password' => ['required', 'confirmed', Password::min(8)->numbers()->symbols()],
+            'password' => [
+                'required',
+                'confirmed',
+                'different:current_password',
+                Password::min(8)->numbers()->symbols(),
+            ],
         ]);
-
-        $user = $request->user();
 
         if (! Hash::check($validated['current_password'], $user->password)) {
             return response()->json([

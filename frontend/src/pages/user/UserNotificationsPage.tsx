@@ -5,8 +5,8 @@ export function UserNotificationsPage() {
   return (
     <DashboardLayout
       title="Notifications"
-      description="Review staff replies, ticket updates, and appointment updates."
-      badge="Inbox"
+      description="Review staff replies and updates to your service requests and appointments."
+      badge="Requester inbox"
     >
       <UserNotificationsPanel />
     </DashboardLayout>

@@ -1,5 +1,5 @@
-import { IdCard, Loader2, LockKeyhole, Save, ShieldCheck, type LucideIcon } from 'lucide-react'
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { CheckCircle2, Loader2, Save } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,7 +11,7 @@ import { saveStoredUser, type AuthUser } from '@/lib/auth-storage'
 import { cn } from '@/lib/utils'
 
 const roleLabels: Record<AuthUser['role'], string> = {
-  user: 'User',
+  user: 'Requester',
   staff: 'Staff',
   super_admin: 'Super Admin',
 }
@@ -27,6 +27,7 @@ function getInitials(name?: string) {
 
   return name
     .split(' ')
+    .filter(Boolean)
     .map((part) => part[0])
     .join('')
     .slice(0, 2)
@@ -36,56 +37,43 @@ function getInitials(name?: string) {
 export function ProfileSection({
   user,
   onUserUpdated,
-  allowRequesterType = false,
+  className,
 }: {
   user: AuthUser
   onUserUpdated: (user: AuthUser) => void
-  allowRequesterType?: boolean
+  className?: string
 }) {
   const [name, setName] = useState(user.name)
   const [savedName, setSavedName] = useState(user.name)
-  const [requesterType, setRequesterType] = useState<'employee' | 'visitor'>(
-    user.requester_type ?? 'visitor'
-  )
-  const [savedRequesterType, setSavedRequesterType] = useState<'employee' | 'visitor'>(
-    user.requester_type ?? 'visitor'
-  )
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
-  const canEditRequesterType = allowRequesterType && user.role === 'user'
-
-  const hasChanges =
-    name.trim() !== savedName ||
-    (canEditRequesterType && requesterType !== savedRequesterType)
+  const normalizedName = name.trim().replace(/\s+/g, ' ')
+  const hasChanges = normalizedName !== savedName
+  const nameError = useMemo(() => {
+    if (!name.length) return ''
+    if (normalizedName.length < 2) return 'Enter at least 2 characters.'
+    if (normalizedName.length > 255) return 'Name must not exceed 255 characters.'
+    return ''
+  }, [name, normalizedName])
 
   useEffect(() => {
     setName(user.name)
     setSavedName(user.name)
-    setRequesterType(user.requester_type ?? 'visitor')
-    setSavedRequesterType(user.requester_type ?? 'visitor')
   }, [user])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!hasChanges) return
+    if (!hasChanges || nameError) return
 
     setIsSaving(true)
     setError('')
     setMessage('')
 
     try {
-      const response = await updateAccountProfile({
-        name: name.trim(),
-        requester_type: canEditRequesterType ? requesterType : undefined,
-      })
-
-      const nextRequesterType = response.data.requester_type ?? 'visitor'
-
+      const response = await updateAccountProfile({ name: normalizedName })
       setSavedName(response.data.name)
-      setRequesterType(nextRequesterType)
-      setSavedRequesterType(nextRequesterType)
       saveStoredUser(response.data)
       onUserUpdated(response.data)
       setMessage(response.message)
@@ -97,11 +85,14 @@ export function ProfileSection({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="overflow-hidden rounded-lg border bg-white shadow-sm">
+    <form
+      onSubmit={handleSubmit}
+      className={cn('overflow-hidden rounded-lg border bg-white shadow-sm', className)}
+    >
       <div className="border-b bg-slate-50 px-5 py-4">
         <h2 className="font-semibold">Profile</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage your visible account name and workspace identity.
+          Manage the name shown throughout your OfficeFlow workspace.
         </p>
       </div>
 
@@ -112,102 +103,76 @@ export function ProfileSection({
           </p>
         ) : null}
 
-        <div className="flex items-center gap-4">
-          {user.avatar_url ? (
-            <img src={user.avatar_url} alt={user.name} className="size-16 rounded-full border object-cover" />
-          ) : (
-            <div className="flex size-16 items-center justify-center rounded-full border bg-slate-50 text-lg font-semibold">
-              {getInitials(user.name)}
-            </div>
-          )}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            {user.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt={user.name}
+                className="size-16 shrink-0 rounded-full border object-cover"
+              />
+            ) : (
+              <div className="flex size-16 shrink-0 items-center justify-center rounded-full border bg-slate-50 text-lg font-semibold">
+                {getInitials(user.name)}
+              </div>
+            )}
 
-          <div className="min-w-0">
-            <p className="truncate font-semibold">{user.name}</p>
-            <p className="truncate text-sm text-muted-foreground">{user.email}</p>
+            <div className="min-w-0">
+              <p className="truncate font-semibold">{user.name}</p>
+              <p className="truncate text-sm text-muted-foreground">{user.email}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Badge className={cn('border-0', roleStyles[user.role])}>
+              {roleLabels[user.role]}
+            </Badge>
+            {user.role === 'user' && user.requester_type ? (
+              <Badge variant="outline" className="capitalize">
+                {user.requester_type}
+              </Badge>
+            ) : null}
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <InfoBox icon={ShieldCheck} label="Role">
-            <Badge className={cn('border-0', roleStyles[user.role])}>{roleLabels[user.role]}</Badge>
-          </InfoBox>
-
-          <InfoBox icon={IdCard} label="Account type">
-            <span className="font-medium capitalize">
-              {user.role === 'user' ? user.requester_type : 'Internal workspace'}
-            </span>
-          </InfoBox>
-
-          <InfoBox icon={LockKeyhole} label="Access">
-            <span className="font-medium">
-              {user.role === 'super_admin'
-                ? 'Full access'
-                : user.role === 'staff'
-                  ? 'Staff tools'
-                  : 'Requester portal'}
-            </span>
-          </InfoBox>
-        </div>
-
-        <div className="space-y-2">
+        <div className="max-w-2xl space-y-2">
           <Label htmlFor="account-name">Full name</Label>
-          <Input id="account-name" value={name} onChange={(event) => setName(event.target.value)} />
+          <Input
+            id="account-name"
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value)
+              setMessage('')
+            }}
+            maxLength={255}
+            autoComplete="name"
+            aria-invalid={Boolean(nameError)}
+          />
+          {nameError ? <p className="text-xs text-red-600">{nameError}</p> : null}
         </div>
-
-        {canEditRequesterType ? (
-          <div>
-            <Label>Requester type</Label>
-            <div className="mt-2 grid max-w-md grid-cols-2 gap-2">
-              {(['employee', 'visitor'] as const).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setRequesterType(type)}
-                  className={cn(
-                    'h-9 cursor-pointer rounded-lg border text-sm font-medium transition-colors',
-                    requesterType === type
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'bg-white text-muted-foreground hover:bg-muted'
-                  )}
-                >
-                  {type === 'employee' ? 'Employee' : 'Visitor'}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         <div className="flex min-h-9 items-center justify-between gap-3">
-          <p className="text-sm font-medium text-emerald-700">{message}</p>
+          {message ? (
+            <p className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+              <CheckCircle2 className="size-4" />
+              {message}
+            </p>
+          ) : (
+            <span />
+          )}
 
           {hasChanges ? (
-            <Button type="submit" className="cursor-pointer gap-2" disabled={isSaving}>
+            <Button
+              type="submit"
+              className="cursor-pointer gap-2"
+              disabled={isSaving || Boolean(nameError)}
+            >
               {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-              Save profile
+              Save changes
             </Button>
           ) : null}
         </div>
       </div>
     </form>
-  )
-}
-
-function InfoBox({
-  icon: Icon,
-  label,
-  children,
-}: {
-  icon: LucideIcon
-  label: string
-  children: ReactNode
-}) {
-  return (
-    <div className="rounded-lg border bg-slate-50 p-3">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Icon className="size-4" />
-        {label}
-      </div>
-      <div className="mt-2">{children}</div>
-    </div>
   )
 }

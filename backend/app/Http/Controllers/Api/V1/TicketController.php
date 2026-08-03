@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Events\TicketActivityCreated;
 use App\Events\TicketChanged;
+use App\Events\UserNotificationChanged;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Ticket;
+use App\Models\TicketActivity;
+use App\Notifications\TicketReplyNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -158,6 +162,16 @@ class TicketController extends Controller
 
         $freshTicket = $ticket->fresh();
 
+        if ($oldStatus !== $freshTicket->status) {
+            $this->recordVisibleActivity(
+                $request,
+                $freshTicket,
+                'status_update',
+                'Ticket status changed from '.str_replace('_', ' ', $oldStatus)
+                    .' to '.str_replace('_', ' ', $freshTicket->status).'.'
+            );
+        }
+
         AuditLog::record(
             $request->user(),
             'tickets',
@@ -199,6 +213,22 @@ class TicketController extends Controller
 
         $freshTicket = $ticket->fresh();
 
+        if ($oldAssignedToId !== $freshTicket->assigned_to_id) {
+            $assignmentMessage = match (true) {
+                $freshTicket->assigned_to_id === null => 'Ticket assignment was cleared.',
+                $freshTicket->assigned_to_id === $request->user()->id =>
+                    'Ticket was claimed by '.$request->user()->name.'.',
+                default => 'Ticket assignment was updated by '.$request->user()->name.'.',
+            };
+
+            $this->recordVisibleActivity(
+                $request,
+                $freshTicket,
+                'assigned',
+                $assignmentMessage
+            );
+        }
+
         AuditLog::record(
             $request->user(),
             'tickets',
@@ -219,6 +249,33 @@ class TicketController extends Controller
             'data' => $freshTicket->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
             'message' => 'Ticket assignment updated successfully.',
         ]);
+    }
+
+    private function recordVisibleActivity(
+        Request $request,
+        Ticket $ticket,
+        string $type,
+        string $message
+    ): void {
+        $activity = TicketActivity::create([
+            'ticket_id' => $ticket->id,
+            'user_id' => $request->user()->id,
+            'type' => $type,
+            'message' => $message,
+            'is_internal' => false,
+        ]);
+
+        $activity->load(['user:id,name,email,role']);
+
+        broadcast(new TicketActivityCreated($activity))->toOthers();
+
+        if ($ticket->requester_id !== $request->user()->id) {
+            $ticket->loadMissing('requester');
+
+            $ticket->requester?->notify(new TicketReplyNotification($activity));
+
+            broadcast(new UserNotificationChanged($ticket->requester_id))->toOthers();
+        }
     }
 
     private function generateTicketNumber(): string

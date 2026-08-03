@@ -1,4 +1,11 @@
-import { CalendarCheck, CalendarClock, Search } from 'lucide-react'
+import {
+  CalendarCheck,
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  Inbox,
+  Search,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
@@ -13,6 +20,24 @@ import {
 import { AppointmentDetailsDialog } from '@/features/appointments/components/AppointmentDetailsDialog'
 import { cn } from '@/lib/utils'
 
+type UserAppointmentsPanelProps = {
+  refreshKey?: number
+}
+
+type PaginationMeta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+const emptyMeta: PaginationMeta = {
+  current_page: 1,
+  last_page: 1,
+  per_page: 10,
+  total: 0,
+}
+
 const statusStyles: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
   scheduled: 'bg-sky-100 text-sky-700',
@@ -26,9 +51,31 @@ const statusTabs = [
   { label: 'Scheduled', value: 'scheduled' },
   { label: 'Completed', value: 'completed' },
   { label: 'Cancelled', value: 'cancelled' },
-]
+] as const
 
-export function UserAppointmentsPanel() {
+function formatStatus(status: string) {
+  return status.replaceAll('_', ' ')
+}
+
+function formatSchedule(value: string) {
+  const date = new Date(value)
+
+  return {
+    date: date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+    time: date.toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    }),
+  }
+}
+
+export function UserAppointmentsPanel({
+  refreshKey = 0,
+}: UserAppointmentsPanelProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const openAppointmentId = Number(searchParams.get('open'))
 
@@ -37,13 +84,8 @@ export function UserAppointmentsPanel() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
-  const [meta, setMeta] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-  })
-  const [isLoading, setIsLoading] = useState(false)
+  const [meta, setMeta] = useState<PaginationMeta>(emptyMeta)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
   const selectedAppointment = useMemo(
@@ -54,36 +96,48 @@ export function UserAppointmentsPanel() {
   )
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      async function loadAppointments() {
-        setIsLoading(true)
-        setError('')
+    let cancelled = false
 
-        try {
-          const response = await getAppointments({
-            queue: 'all',
-            status,
-            search,
-            page,
-            per_page: 10,
-          })
+    const timeout = window.setTimeout(
+      () => {
+        async function loadAppointments() {
+          setIsLoading(true)
+          setError('')
 
-          setAppointments(response.data)
-          setMeta(response.meta)
-        } catch {
-          setError('Unable to load appointments.')
-        } finally {
-          setIsLoading(false)
+          try {
+            const response = await getAppointments({
+              queue: 'all',
+              status,
+              search: search.trim(),
+              page,
+              per_page: 10,
+            })
+
+            if (cancelled) return
+
+            setAppointments(response.data)
+            setMeta(response.meta)
+          } catch {
+            if (!cancelled) setError('Unable to load your appointment requests.')
+          } finally {
+            if (!cancelled) setIsLoading(false)
+          }
         }
-      }
 
-      void loadAppointments()
-    }, 250)
+        void loadAppointments()
+      },
+      search ? 250 : 0
+    )
 
-    return () => window.clearTimeout(timeout)
-  }, [page, search, status])
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [page, refreshKey, search, status])
 
   useEffect(() => {
+    let cancelled = false
+
     if (!openAppointmentId) {
       setOpenedAppointment(null)
       return
@@ -97,13 +151,17 @@ export function UserAppointmentsPanel() {
     async function loadOpenedAppointment() {
       try {
         const response = await getAppointment(openAppointmentId)
-        setOpenedAppointment(response.data)
+        if (!cancelled) setOpenedAppointment(response.data)
       } catch {
-        setError('Unable to open the selected appointment.')
+        if (!cancelled) setError('Unable to open the selected appointment.')
       }
     }
 
     void loadOpenedAppointment()
+
+    return () => {
+      cancelled = true
+    }
   }, [appointments, openAppointmentId])
 
   function closeSelectedAppointment() {
@@ -115,15 +173,15 @@ export function UserAppointmentsPanel() {
 
   return (
     <section className="mx-auto max-w-7xl overflow-hidden rounded-lg border bg-white shadow-sm">
-      <div className="flex flex-col gap-4 border-b bg-emerald-50/50 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-5 border-b bg-slate-50/70 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
         <div className="flex items-center gap-3">
-          <div className="flex size-12 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
             <CalendarCheck className="size-5" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold">Appointment requests</h2>
+            <h2 className="text-lg font-semibold">Appointment history</h2>
             <p className="text-sm text-muted-foreground">
-              Track pending, scheduled, completed, and cancelled appointments.
+              Review requested schedules, confirmations, and office updates.
             </p>
           </div>
         </div>
@@ -136,13 +194,13 @@ export function UserAppointmentsPanel() {
               setSearch(event.target.value)
               setPage(1)
             }}
-            placeholder="Search purpose, number, department..."
-            className="pl-9"
+            placeholder="Search appointment, number, office, or service..."
+            className="bg-white pl-9"
           />
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-b px-6 py-4">
+      <div className="flex gap-2 overflow-x-auto border-b px-5 py-3 lg:px-6">
         {statusTabs.map((tab) => (
           <button
             key={tab.label}
@@ -152,7 +210,7 @@ export function UserAppointmentsPanel() {
               setPage(1)
             }}
             className={cn(
-              'h-9 cursor-pointer rounded-full border px-4 text-sm font-medium transition-colors',
+              'h-9 shrink-0 cursor-pointer rounded-full border px-4 text-sm font-medium transition-colors',
               status === tab.value
                 ? 'border-primary bg-primary text-primary-foreground'
                 : 'bg-white text-muted-foreground hover:bg-muted'
@@ -164,61 +222,102 @@ export function UserAppointmentsPanel() {
       </div>
 
       {error ? (
-        <div className="border-b border-red-200 bg-red-50 px-6 py-3 text-sm text-red-700">
+        <div className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm text-red-700 lg:px-6">
           {error}
         </div>
       ) : null}
 
+      <div className="hidden grid-cols-[minmax(0,1.25fr)_minmax(170px,0.7fr)_190px_130px_130px] gap-5 border-b bg-slate-50 px-6 py-3 text-xs font-semibold uppercase text-muted-foreground lg:grid">
+        <span>Appointment</span>
+        <span>Office</span>
+        <span>Preferred schedule</span>
+        <span>Status</span>
+        <span>Action</span>
+      </div>
+
       <div className="divide-y">
         {isLoading ? (
-          <div className="px-6 py-10 text-sm text-muted-foreground">
-            Loading appointments...
-          </div>
-        ) : appointments.length ? (
-          appointments.map((appointment) => (
-            <article
-              key={appointment.id}
-              className="grid gap-4 px-6 py-5 lg:grid-cols-[1fr_auto] lg:items-center"
+          Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="grid animate-pulse gap-4 px-5 py-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(170px,0.7fr)_190px_130px_130px] lg:items-center lg:gap-5 lg:px-6"
             >
-              <div className="flex min-w-0 gap-4">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
-                  <CalendarCheck className="size-5" />
-                </div>
-
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-semibold">{appointment.purpose}</h3>
-                    <Badge className={cn('border-0 capitalize', statusStyles[appointment.status])}>
-                      {appointment.status}
-                    </Badge>
-                  </div>
-
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {appointment.appointment_number} - {appointment.department}
-                  </p>
-                  <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                    <CalendarClock className="size-3.5" />
-                    {new Date(appointment.scheduled_at).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              <AppointmentDetailsDialog appointment={appointment} mode="activity" />
-            </article>
+              <div className="h-11 rounded-md bg-slate-100" />
+              <div className="h-9 rounded-md bg-slate-100" />
+              <div className="h-9 rounded-md bg-slate-100" />
+              <div className="h-7 rounded-full bg-slate-100" />
+              <div className="h-9 rounded-md bg-slate-100" />
+            </div>
           ))
+        ) : appointments.length ? (
+          appointments.map((appointment) => {
+            const schedule = formatSchedule(appointment.scheduled_at)
+
+            return (
+              <article
+                key={appointment.id}
+                className="grid gap-4 px-5 py-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(170px,0.7fr)_190px_130px_130px] lg:items-center lg:gap-5 lg:px-6"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                    <CalendarCheck className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="truncate font-semibold">{appointment.purpose}</h3>
+                    <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                      {appointment.appointment_number}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="min-w-0 text-sm">
+                  <p className="truncate font-medium">{appointment.department}</p>
+                  <p className="mt-0.5 text-muted-foreground">Requested office</p>
+                </div>
+
+                <div className="flex items-start gap-2 text-sm">
+                  <CalendarClock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div>
+                    <p className="font-medium">{schedule.date}</p>
+                    <p className="text-muted-foreground">{schedule.time}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      'border-0 capitalize',
+                      statusStyles[appointment.status] ?? 'bg-slate-100 text-slate-700'
+                    )}
+                  >
+                    {formatStatus(appointment.status)}
+                  </Badge>
+                </div>
+
+                <div className="lg:flex lg:justify-start">
+                  <AppointmentDetailsDialog appointment={appointment} mode="activity" />
+                </div>
+              </article>
+            )
+          })
         ) : (
-          <div className="px-6 py-12 text-center">
-            <p className="font-medium">No appointments found</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Your appointment requests will appear here.
+          <div className="flex flex-col items-center px-6 py-14 text-center">
+            <div className="flex size-12 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+              <Inbox className="size-5" />
+            </div>
+            <p className="mt-4 font-medium">No appointments found</p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              Appointment requests that match this view will appear here.
             </p>
           </div>
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t bg-slate-50 px-6 py-4">
+      <div className="flex flex-col gap-3 border-t bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
         <p className="text-sm text-muted-foreground">
-          Page {meta.current_page} of {meta.last_page} - {meta.total} appointments
+          Page {meta.current_page} of {meta.last_page} - {meta.total} appointment
+          {meta.total === 1 ? '' : 's'}
         </p>
 
         <div className="flex gap-2">
@@ -226,19 +325,21 @@ export function UserAppointmentsPanel() {
             type="button"
             variant="outline"
             className="cursor-pointer"
-            disabled={page <= 1}
+            disabled={page <= 1 || isLoading}
             onClick={() => setPage((current) => Math.max(current - 1, 1))}
           >
+            <ChevronLeft className="size-4" />
             Previous
           </Button>
           <Button
             type="button"
             variant="outline"
             className="cursor-pointer"
-            disabled={page >= meta.last_page}
+            disabled={page >= meta.last_page || isLoading}
             onClick={() => setPage((current) => Math.min(current + 1, meta.last_page))}
           >
             Next
+            <ChevronRight className="size-4" />
           </Button>
         </div>
       </div>
@@ -248,8 +349,8 @@ export function UserAppointmentsPanel() {
           appointment={selectedAppointment}
           mode="activity"
           open={Boolean(selectedAppointment)}
-          onOpenChange={(open) => {
-            if (!open) closeSelectedAppointment()
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) closeSelectedAppointment()
           }}
           hideTrigger
         />
