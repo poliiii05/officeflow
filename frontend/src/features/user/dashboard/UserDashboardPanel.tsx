@@ -163,11 +163,18 @@ export function UserDashboardPanel() {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <NewTicketDialog onCreated={() => loadDashboardData({ silent: true })} />
-          <BookAppointmentDialog
-            onCreated={() => loadDashboardData({ silent: true })}
-          />
+       <div className="flex flex-wrap gap-2">
+          <div data-tour="new-request">
+            <NewTicketDialog
+              onCreated={() => loadDashboardData({ silent: true })}
+            />
+          </div>
+
+          <div data-tour="book-appointment">
+            <BookAppointmentDialog
+              onCreated={() => loadDashboardData({ silent: true })}
+            />
+          </div>
         </div>
       </div>
 
@@ -177,7 +184,7 @@ export function UserDashboardPanel() {
         </div>
       ) : null}
 
-      <div className="mt-6 grid gap-4 md:grid-cols-3">
+     <div data-tour="dashboard-summary"className="mt-6 grid gap-4 md:grid-cols-3">
         {dashboardStats.map((stat) => {
           const Icon = stat.icon
 
@@ -208,7 +215,10 @@ export function UserDashboardPanel() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.35fr_0.85fr]">
-        <section className="overflow-hidden rounded-lg border border-sky-100 bg-white shadow-sm">
+        <section
+            data-tour="recent-requests"
+            className="overflow-hidden rounded-lg border border-sky-100 bg-white shadow-sm"
+          >
           <div className="flex items-center justify-between border-b bg-sky-50/70 px-5 py-4">
             <div>
               <h3 className="font-semibold">Recent service requests</h3>
@@ -331,7 +341,10 @@ export function UserDashboardPanel() {
             )}
           </section>
 
-          <section className="overflow-hidden rounded-lg border border-violet-100 bg-white shadow-sm">
+          <section
+              data-tour="latest-updates"
+              className="overflow-hidden rounded-lg border border-violet-100 bg-white shadow-sm"
+            >
             <div className="border-b bg-violet-50/80 px-5 py-4">
               <div className="flex items-center gap-3">
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
