@@ -4,7 +4,6 @@ import {
   ChevronRight,
   FileText,
   Inbox,
-  RefreshCw,
   Search,
   UserCheck,
 } from 'lucide-react'
@@ -131,7 +130,6 @@ export function StaffQueuePanel() {
 })
   const [isLoading, setIsLoading] = useState(true)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [updatingKey, setUpdatingKey] = useState<string | null>(null)
   const [error, setError] = useState('')
 
@@ -142,38 +140,33 @@ export function StaffQueuePanel() {
 
   const queueTotal = ticketMeta.total + appointmentMeta.total
 
-  const loadQueue = useCallback(
-    async ({ silent = false }: { silent?: boolean } = {}) => {
-      if (silent) {
-        setIsRefreshing(true)
-      } else {
-        setIsLoading(true)
-      }
+ const loadQueue = useCallback(
+  async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setIsLoading(true)
 
-      try {
-        const response = await getStaffOverview({
-          view: 'unassigned',
-          ticket_page: ticketPage,
-          appointment_page: appointmentPage,
-          per_page: 10,
-          search: debouncedSearch || undefined,
-        })
+    try {
+      const response = await getStaffOverview({
+        view: 'unassigned',
+        ticket_page: ticketPage,
+        appointment_page: appointmentPage,
+        per_page: 10,
+        search: debouncedSearch || undefined,
+      })
 
-        setTickets(response.data.tickets.data)
-        setTicketMeta(response.data.tickets.meta)
-        setAppointments(response.data.appointments.data)
-        setAppointmentMeta(response.data.appointments.meta)
-        setError('')
-        setHasLoadedOnce(true)
-      } catch (error) {
-        setError(getApiErrorMessage(error, 'Unable to load staff queue.'))
-      } finally {
-        setIsLoading(false)
-        setIsRefreshing(false)
-      }
-    },
-    [appointmentPage, debouncedSearch, ticketPage]
-  )
+      setTickets(response.data.tickets.data)
+      setTicketMeta(response.data.tickets.meta)
+      setAppointments(response.data.appointments.data)
+      setAppointmentMeta(response.data.appointments.meta)
+      setError('')
+      setHasLoadedOnce(true)
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'Unable to load staff queue.'))
+    } finally {
+      setIsLoading(false)
+    }
+  },
+  [appointmentPage, debouncedSearch, ticketPage]
+)
 
   const loadQueueRef = useRef(loadQueue)
 
@@ -305,17 +298,12 @@ export function StaffQueuePanel() {
                   className="pl-9"
                 />
               </div>
-
-              <div className="inline-flex items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm text-muted-foreground">
-                <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin')} />
-                Live sync
-              </div>
             </div>
           </div>
 
           {!shiftState.is_on_duty ? (
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Start your shift from the dashboard before claiming queue items.
+              Start your shift from Shift History before claiming queue items.
             </div>
           ) : null}
         </div>

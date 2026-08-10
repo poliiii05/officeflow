@@ -21,9 +21,28 @@ export type StaffShiftState = {
   today_shift: StaffShift | null
 }
 
+export type StaffShiftHistoryItem = StaffShift & {
+  duration_minutes: number
+  completed_tickets: number
+  completed_appointments: number
+  completed_total: number
+}
+
+export type StaffShiftHistoryMeta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
 type StaffShiftResponse = {
   data: StaffShiftState
   message?: string
+}
+
+type StaffShiftHistoryResponse = {
+  data: StaffShiftHistoryItem[]
+  meta: StaffShiftHistoryMeta
 }
 
 export async function getCurrentStaffShift() {
@@ -39,6 +58,19 @@ export async function startStaffShift() {
 export async function endStaffShift(endReason: StaffShiftEndReason = 'end_shift') {
   const response = await api.post<StaffShiftResponse>('/staff/shift/end', {
     end_reason: endReason,
+  })
+
+  return response.data
+}
+
+export async function getStaffShiftHistory(params?: {
+  page?: number
+  per_page?: number
+  date_from?: string
+  date_to?: string
+}) {
+  const response = await api.get<StaffShiftHistoryResponse>('/staff/shifts', {
+    params,
   })
 
   return response.data

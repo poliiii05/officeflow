@@ -18,6 +18,8 @@ class StaffDashboardController extends Controller
         $validated = $request->validate([
             'view' => ['nullable', 'in:unassigned,mine,resolved_today,all'],
             'search' => ['nullable', 'string', 'max:100'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
             'ticket_page' => ['nullable', 'integer', 'min:1'],
             'appointment_page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
@@ -26,14 +28,16 @@ class StaffDashboardController extends Controller
         $user = $request->user();
         $view = $validated['view'] ?? 'unassigned';
         $search = $validated['search'] ?? null;
+        $dateFrom = $validated['date_from'] ?? null;
+        $dateTo = $validated['date_to'] ?? null;
         $perPage = $validated['per_page'] ?? 10;
 
-        $tickets = $this->ticketQuery($view, $user->id, $search)
+        $tickets = $this->ticketQuery($view, $user->id, $search, $dateFrom, $dateTo)
             ->latest()
             ->paginate($perPage, ['*'], 'ticket_page', $validated['ticket_page'] ?? 1);
 
-        $appointments = $this->appointmentQuery($view, $user->id, $search)
-            ->latest('scheduled_at')
+        $appointments = $this->appointmentQuery($view, $user->id, $search, $dateFrom, $dateTo)
+            ->latest()
             ->paginate($perPage, ['*'], 'appointment_page', $validated['appointment_page'] ?? 1);
 
         $myActiveTickets = Ticket::where('assigned_to_id', $user->id)
@@ -77,8 +81,13 @@ class StaffDashboardController extends Controller
         ]);
     }
 
-    private function ticketQuery(string $view, int $userId, ?string $search): Builder
-    {
+    private function ticketQuery(
+        string $view,
+        int $userId,
+        ?string $search,
+        ?string $dateFrom,
+        ?string $dateTo
+    ): Builder {
         return Ticket::query()
             ->with(['requester:id,name,email,requester_type', 'assignedTo:id,name,email'])
             ->when($view === 'unassigned', fn ($query) => $query
@@ -90,6 +99,8 @@ class StaffDashboardController extends Controller
             ->when($view === 'resolved_today', fn ($query) => $query
                 ->whereIn('status', ['resolved', 'closed'])
                 ->whereDate('resolved_at', now()->toDateString()))
+            ->when($dateFrom, fn ($query) => $query->whereDate('created_at', '>=', $dateFrom))
+            ->when($dateTo, fn ($query) => $query->whereDate('created_at', '<=', $dateTo))
             ->when($search, function ($query, $search) {
                 $query->where(function ($innerQuery) use ($search) {
                     $innerQuery
@@ -106,8 +117,13 @@ class StaffDashboardController extends Controller
             });
     }
 
-    private function appointmentQuery(string $view, int $userId, ?string $search): Builder
-    {
+    private function appointmentQuery(
+        string $view,
+        int $userId,
+        ?string $search,
+        ?string $dateFrom,
+        ?string $dateTo
+    ): Builder {
         return Appointment::query()
             ->with(['requester:id,name,email,requester_type', 'assignedTo:id,name,email'])
             ->when($view === 'unassigned', fn ($query) => $query
@@ -119,6 +135,8 @@ class StaffDashboardController extends Controller
             ->when($view === 'resolved_today', fn ($query) => $query
                 ->where('status', 'completed')
                 ->whereDate('updated_at', now()->toDateString()))
+            ->when($dateFrom, fn ($query) => $query->whereDate('created_at', '>=', $dateFrom))
+            ->when($dateTo, fn ($query) => $query->whereDate('created_at', '<=', $dateTo))
             ->when($search, function ($query, $search) {
                 $query->where(function ($innerQuery) use ($search) {
                     $innerQuery

@@ -3,6 +3,7 @@ import type { AuthUser } from '@/lib/auth-storage'
 
 export type UpdateProfilePayload = {
   name: string
+  nickname: string | null
 }
 
 export type UpdatePasswordPayload = {

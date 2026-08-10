@@ -4,6 +4,7 @@ export const AUTH_USER_KEY = 'officeflow.auth.user'
 export type AuthUser = {
   id: number
   name: string
+  nickname: string | null
   email: string
   email_verified_at: string | null
   google_id?: string | null

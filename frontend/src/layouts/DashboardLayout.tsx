@@ -14,10 +14,9 @@ import {
   UserCog,
   Users,
 } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -29,6 +28,10 @@ import {
 } from '@/components/ui/dialog'
 import { logoutUser } from '@/features/auth/auth-api'
 import { RequesterOnboardingDialog } from '@/features/onboarding/components/RequesterOnboardingDialog'
+import {
+  StaffOnboardingDialog,
+  isStaffOnboardingDone,
+} from '@/features/onboarding/components/StaffOnboardingDialog'
 import { getStoredUser, type AuthUser } from '@/lib/auth-storage'
 import { cn } from '@/lib/utils'
 
@@ -46,20 +49,8 @@ type NavItem = {
   icon: typeof LayoutDashboard
 }
 
-function getInitials(name?: string) {
-  if (!name) return 'OF'
-
-  return name
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
-}
-
 function getWorkspaceLabel(user: AuthUser | null) {
   if (!user) return 'Workspace'
-
   if (user.role === 'super_admin') return 'Super admin workspace'
   if (user.role === 'staff') return 'Staff workspace'
 
@@ -68,18 +59,23 @@ function getWorkspaceLabel(user: AuthUser | null) {
 
 function getRoleBadge(user: AuthUser | null) {
   if (!user) return 'Account'
-
   if (user.role === 'super_admin') return 'Super Admin'
   if (user.role === 'staff') return 'Staff'
 
   return 'Requester'
 }
 
+function getDisplayName(user: AuthUser | null) {
+  if (!user) return 'OfficeFlow User'
+
+  return user.nickname?.trim() || user.name
+}
+
 function getNavItems(user: AuthUser | null): NavItem[] {
   if (!user) return []
 
   if (user.role === 'super_admin') {
-  return [
+    return [
       { label: 'Overview', to: '/super-admin/dashboard', icon: LayoutDashboard },
       { label: 'Users', to: '/super-admin/users', icon: UserCog },
       { label: 'Staff', to: '/super-admin/staff', icon: Users },
@@ -102,7 +98,7 @@ function getNavItems(user: AuthUser | null): NavItem[] {
     ]
   }
 
-    return [
+  return [
     { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
     { label: 'My Requests', to: '/tickets', icon: TicketCheck },
     { label: 'Appointments', to: '/appointments', icon: CalendarCheck },
@@ -123,9 +119,27 @@ export function DashboardLayout({
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [staffOnboardingVersion, setStaffOnboardingVersion] = useState(0)
 
   const navItems = useMemo(() => getNavItems(user), [user])
   const badgeLabel = badge ?? getRoleBadge(user)
+  const accountName = getDisplayName(user)
+  const roleLabel = getRoleBadge(user)
+
+  const shouldShowStaffOnboarding = useMemo(() => {
+    staffOnboardingVersion
+    return user !== null && !isStaffOnboardingDone(user)
+  }, [staffOnboardingVersion, user])
+
+  useEffect(() => {
+    function handleUserUpdated(event: Event) {
+      const nextUser = (event as CustomEvent<AuthUser>).detail
+      if (nextUser) setUser(nextUser)
+    }
+
+    window.addEventListener('officeflow:user-updated', handleUserUpdated)
+    return () => window.removeEventListener('officeflow:user-updated', handleUserUpdated)
+  }, [])
 
   async function handleLogout() {
     if (isLoggingOut) return
@@ -147,6 +161,7 @@ export function DashboardLayout({
         <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <ClipboardList className="size-5" />
         </div>
+
         <div>
           <p className="font-semibold">OfficeFlow</p>
           <p className="text-sm text-muted-foreground">{getWorkspaceLabel(user)}</p>
@@ -179,20 +194,10 @@ export function DashboardLayout({
       </nav>
 
       <div className="border-t p-4">
-        <div className="flex items-center gap-3 rounded-lg border bg-slate-50 p-3">
-          <Avatar className="size-9">
-            <AvatarFallback>{getInitials(user?.name)}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{user?.name ?? 'OfficeFlow User'}</p>
-            <p className="truncate text-xs text-muted-foreground">{user?.email ?? 'No email'}</p>
-          </div>
-        </div>
-
         <Button
           type="button"
           variant="outline"
-          className="mt-3 w-full cursor-pointer justify-start gap-2 bg-white"
+          className="w-full cursor-pointer justify-start gap-2 bg-white"
           onClick={() => setIsLogoutDialogOpen(true)}
         >
           <LogOut className="size-4" />
@@ -215,60 +220,81 @@ export function DashboardLayout({
               className="absolute inset-0 bg-black/30"
               onClick={() => setIsMobileSidebarOpen(false)}
             />
+
             <div className="relative h-full">{sidebar}</div>
           </div>
         ) : null}
 
         <div className="lg:pl-72">
           <header className="sticky top-0 z-20 border-b bg-white/90 backdrop-blur">
-          <div className="flex min-h-20 items-center justify-between gap-4 px-4 py-4 sm:px-6">
-            <div className="flex min-w-0 items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="cursor-pointer lg:hidden"
-                onClick={() => setIsMobileSidebarOpen(true)}
-              >
-                <Menu className="size-4" />
-              </Button>
+            <div className="flex min-h-20 items-center justify-between gap-4 px-4 py-4 sm:px-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="cursor-pointer lg:hidden"
+                  onClick={() => setIsMobileSidebarOpen(true)}
+                >
+                  <Menu className="size-4" />
+                </Button>
 
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
-                    {badgeLabel}
-                  </span>
-                  {user?.role === 'super_admin' ? (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
-                      <ShieldCheck className="size-3" />
-                      Full access
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+                      {badgeLabel}
                     </span>
+
+                    {user?.role === 'super_admin' ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
+                        <ShieldCheck className="size-3" />
+                        Full access
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <h1 className="mt-2 truncate text-xl font-semibold sm:text-2xl">
+                    {title}
+                  </h1>
+
+                  {description ? (
+                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                      {description}
+                    </p>
                   ) : null}
                 </div>
-                <h1 className="mt-2 truncate text-xl font-semibold sm:text-2xl">{title}</h1>
-                {description ? (
-                  <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{description}</p>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                {user ? (
+                  <div
+                    data-tour="workspace-identity"
+                    className="hidden rounded-lg border bg-slate-50 px-3 py-2 text-sm md:block"
+                  >
+                    <span className="block max-w-64 truncate font-medium">
+                      {roleLabel}: {accountName}
+                    </span>
+                  </div>
                 ) : null}
+
+                {actions}
               </div>
             </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              {actions}
-            </div>
-          </div>
           </header>
 
-          <div className="px-4 py-6 sm:px-6">
-            {children}
-          </div>
+          <div className="px-4 py-6 sm:px-6">{children}</div>
         </div>
       </main>
 
       {user?.role === 'user' && user.onboarding_completed_at === null ? (
-        <RequesterOnboardingDialog
+        <RequesterOnboardingDialog user={user} open onCompleted={setUser} />
+      ) : null}
+
+      {shouldShowStaffOnboarding && user ? (
+        <StaffOnboardingDialog
           user={user}
           open
-          onCompleted={setUser}
+          onCompleted={() => setStaffOnboardingVersion((value) => value + 1)}
         />
       ) : null}
 
@@ -278,6 +304,7 @@ export function DashboardLayout({
             <div className="mb-2 flex size-11 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
               <LogOut className="size-5" />
             </div>
+
             <DialogTitle>Log out of OfficeFlow?</DialogTitle>
             <DialogDescription>
               You will need to sign in again to access your workspace.
@@ -294,6 +321,7 @@ export function DashboardLayout({
             >
               Cancel
             </Button>
+
             <Button
               type="button"
               className="cursor-pointer"

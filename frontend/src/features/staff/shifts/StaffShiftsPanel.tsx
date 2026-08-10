@@ -1,13 +1,17 @@
 import {
-  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
+  FileClock,
   Power,
-  RefreshCw,
-  ShieldCheck,
+  TimerReset,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -16,167 +20,217 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { getApiErrorMessage } from '@/features/auth/auth-api'
 import {
   endStaffShift,
   getCurrentStaffShift,
+  getStaffShiftHistory,
   startStaffShift,
   type StaffShiftEndReason,
+  type StaffShiftHistoryItem,
+  type StaffShiftHistoryMeta,
   type StaffShiftState,
 } from '@/features/staff/staff-shift-api'
 import { cn } from '@/lib/utils'
 
-const endShiftOptions: Array<{
-  value: StaffShiftEndReason
-  label: string
-  description: string
-}> = [
-  {
-    value: 'early_out',
-    label: 'Early out',
-    description: 'Use this when ending the shift earlier than expected.',
-  },
-  {
-    value: 'end_shift',
-    label: 'End shift',
-    description: 'Normal shift close for today.',
-  },
-]
+const emptyMeta: StaffShiftHistoryMeta = {
+  current_page: 1,
+  last_page: 1,
+  per_page: 10,
+  total: 0,
+}
 
-function formatDateTime(value?: string | null) {
+const emptyShiftState: StaffShiftState = {
+  is_on_duty: false,
+  can_start_shift: true,
+  has_shift_today: false,
+  shift: null,
+  today_shift: null,
+}
+
+const TABLE_COLUMNS = 'grid-cols-[1.1fr_1fr_1fr_1fr_1fr_1.1fr_1fr]'
+const TABLE_MIN_WIDTH = 'min-w-[880px]'
+
+function formatDate(value?: string | null) {
   if (!value) return 'Not recorded'
 
-  return new Date(value).toLocaleString([], {
+  return new Date(value).toLocaleDateString([], {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+  })
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return 'Not recorded'
+
+  return new Date(value).toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
   })
 }
 
-function formatNowDateTime() {
-  return formatDateTime(new Date().toISOString())
-}
+function formatDuration(minutes: number) {
+  if (minutes <= 0) return '0m'
 
-function getElapsed(startedAt?: string | null, endedAt?: string | null) {
-  if (!startedAt) return 'No active session'
-
-  const end = endedAt ? new Date(endedAt).getTime() : Date.now()
-  const diff = end - new Date(startedAt).getTime()
-  const minutes = Math.max(Math.floor(diff / 60000), 0)
   const hours = Math.floor(minutes / 60)
   const remainingMinutes = minutes % 60
 
   if (hours <= 0) return `${remainingMinutes}m`
+  if (remainingMinutes <= 0) return `${hours}h`
+
   return `${hours}h ${remainingMinutes}m`
 }
 
+function getLiveDuration(startedAt?: string | null, now = Date.now()) {
+  if (!startedAt) return 'No active session'
+
+  const diff = now - new Date(startedAt).getTime()
+  const minutes = Math.max(Math.floor(diff / 60000), 0)
+
+  return `${formatDuration(minutes)} on duty`
+}
+
+function formatEndReason(value: StaffShiftHistoryItem['end_reason']) {
+  if (value === 'early_out') return 'Early out'
+  if (value === 'end_shift') return 'End shift'
+  return 'Active shift'
+}
+
 export function StaffShiftsPanel() {
-  const [shiftState, setShiftState] = useState<StaffShiftState>({
-    is_on_duty: false,
-    can_start_shift: true,
-    has_shift_today: false,
-    shift: null,
-    today_shift: null,
-  })
+  const [shiftState, setShiftState] = useState<StaffShiftState>(emptyShiftState)
+  const [shifts, setShifts] = useState<StaffShiftHistoryItem[]>([])
+  const [meta, setMeta] = useState<StaffShiftHistoryMeta>(emptyMeta)
+  const [page, setPage] = useState(1)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [isLoading, setIsLoading] = useState(true)
-  const [isUpdating, setIsUpdating] = useState(false)
-  const [isEndDialogOpen, setIsEndDialogOpen] = useState(false)
+  const [isUpdatingShift, setIsUpdatingShift] = useState(false)
+  const [isEndShiftOpen, setIsEndShiftOpen] = useState(false)
   const [endShiftReason, setEndShiftReason] = useState<StaffShiftEndReason>('end_shift')
+  const [nowTick, setNowTick] = useState(Date.now())
   const [error, setError] = useState('')
 
   const displayShift = shiftState.shift ?? shiftState.today_shift
   const canStartShift = shiftState.can_start_shift && !shiftState.is_on_duty
+  const endingPreview = useMemo(() => new Date(nowTick).toISOString(), [nowTick])
 
-  const elapsedLabel = useMemo(
-    () => getElapsed(displayShift?.started_at, displayShift?.ended_at),
-    [displayShift?.ended_at, displayShift?.started_at]
-  )
-
-  const selectedEndShift = useMemo(
-    () => endShiftOptions.find((option) => option.value === endShiftReason) ?? endShiftOptions[1],
-    [endShiftReason]
-  )
-
-  const statusLabel = isLoading
-    ? 'Checking...'
-    : shiftState.is_on_duty
-      ? 'On duty'
-      : shiftState.has_shift_today
-        ? 'Shift recorded'
-        : 'Off duty'
+  const statusLabel = shiftState.is_on_duty
+    ? 'On duty'
+    : shiftState.has_shift_today
+      ? 'Shift recorded'
+      : 'Off duty'
 
   const statusDescription = shiftState.is_on_duty
-    ? 'You can claim requests, update statuses, and send staff replies.'
+    ? getLiveDuration(shiftState.shift?.started_at, nowTick)
     : shiftState.has_shift_today
-      ? 'Your staff shift for today is already closed.'
-      : 'Start your shift before claiming requests or updating assigned work.'
+      ? 'Your shift for today is already closed.'
+      : 'No shift recorded for today.'
 
-  async function loadShift() {
-    setIsLoading(true)
+  const completedToday = useMemo(
+    () =>
+      shifts
+        .filter((shift) => formatDate(shift.started_at) === formatDate(new Date().toISOString()))
+        .reduce((total, shift) => total + shift.completed_total, 0),
+    [shifts]
+  )
 
+  const loadShiftHistory = useCallback(async () => {
     try {
-      const response = await getCurrentStaffShift()
-      setShiftState(response.data)
+      const [currentResponse, historyResponse] = await Promise.all([
+        getCurrentStaffShift(),
+        getStaffShiftHistory({
+          page,
+          per_page: 10,
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
+        }),
+      ])
+
+      setShiftState(currentResponse.data)
+      setShifts(historyResponse.data)
+      setMeta(historyResponse.meta)
       setError('')
     } catch (error) {
-      setError(getApiErrorMessage(error, 'Unable to load shift status.'))
+      setError(getApiErrorMessage(error, 'Unable to load shift history.'))
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [dateFrom, dateTo, page])
 
   useEffect(() => {
-    void loadShift()
-  }, [])
+    setPage(1)
+  }, [dateFrom, dateTo])
+
+  useEffect(() => {
+    void loadShiftHistory()
+  }, [loadShiftHistory])
+
+  useEffect(() => {
+    if (!shiftState.is_on_duty) return
+
+    const timer = window.setInterval(() => {
+      setNowTick(Date.now())
+    }, 30000)
+
+    return () => window.clearInterval(timer)
+  }, [shiftState.is_on_duty])
 
   async function handleStartShift() {
-    if (!canStartShift) return
+    if (!canStartShift || isUpdatingShift) return
 
-    setIsUpdating(true)
+    setIsUpdatingShift(true)
     setError('')
 
     try {
       const response = await startStaffShift()
       setShiftState(response.data)
+      setNowTick(Date.now())
+      await loadShiftHistory()
     } catch (error) {
       setError(getApiErrorMessage(error, 'Unable to start shift.'))
     } finally {
-      setIsUpdating(false)
+      setIsUpdatingShift(false)
     }
   }
 
   function handleOpenEndShift() {
+    if (!shiftState.is_on_duty) return
+
+    setNowTick(Date.now())
     setEndShiftReason('end_shift')
-    setIsEndDialogOpen(true)
+    setIsEndShiftOpen(true)
   }
 
   async function handleEndShift() {
-    setIsUpdating(true)
+    if (!shiftState.is_on_duty || isUpdatingShift) return
+
+    setIsUpdatingShift(true)
     setError('')
 
     try {
       const response = await endStaffShift(endShiftReason)
       setShiftState(response.data)
-      setIsEndDialogOpen(false)
+      setIsEndShiftOpen(false)
       setEndShiftReason('end_shift')
+      await loadShiftHistory()
     } catch (error) {
       setError(getApiErrorMessage(error, 'Unable to end shift.'))
     } finally {
-      setIsUpdating(false)
+      setIsUpdatingShift(false)
     }
   }
 
   return (
-    <section className="mx-auto max-w-5xl space-y-5">
+    <section className="mx-auto max-w-7xl space-y-5">
       {error ? (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
         <div
           className={cn(
             'rounded-lg border p-5 shadow-sm',
@@ -189,11 +243,9 @@ export function StaffShiftsPanel() {
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="font-medium">Current duty status</p>
-              <p className="mt-7 text-3xl font-semibold">{statusLabel}</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {shiftState.is_on_duty ? `${elapsedLabel} active` : statusDescription}
-              </p>
+              <p className="text-sm font-medium text-muted-foreground">Today</p>
+              <h2 className="mt-2 text-2xl font-semibold">{statusLabel}</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{statusDescription}</p>
             </div>
 
             <div
@@ -209,124 +261,269 @@ export function StaffShiftsPanel() {
               <Clock3 className="size-5" />
             </div>
           </div>
-        </div>
 
-        <div className="rounded-lg border bg-white p-5 shadow-sm">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div>
-              <h2 className="text-lg font-semibold">Shift controls</h2>
-              <p className="text-sm text-muted-foreground">{statusDescription}</p>
-            </div>
-
+          <div className="mt-5">
             {shiftState.is_on_duty ? (
               <Button
                 type="button"
                 variant="destructive"
-                className="cursor-pointer gap-2"
-                disabled={isUpdating}
+                className="w-full cursor-pointer"
                 onClick={handleOpenEndShift}
+                disabled={isUpdatingShift}
               >
-                <Power className="size-4" />
                 End shift
+                <Power className="size-4" />
               </Button>
-            ) : (
+            ) : canStartShift ? (
               <Button
                 type="button"
-                className="cursor-pointer gap-2"
-                disabled={isLoading || isUpdating || !canStartShift}
+                className="w-full cursor-pointer"
                 onClick={handleStartShift}
+                disabled={isUpdatingShift}
               >
-                <Power className="size-4" />
                 Start shift
+                <Power className="size-4" />
+              </Button>
+            ) : (
+              <Button type="button" variant="outline" className="w-full bg-white" disabled>
+                Shift completed today
               </Button>
             )}
           </div>
+        </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <InfoCard
-              icon={Clock3}
+        <div className="rounded-lg border bg-white p-5 shadow-sm">
+          <div className="grid gap-4 md:grid-cols-3">
+            <SummaryCard
+              icon={CalendarClock}
               label="Started at"
-              value={formatDateTime(displayShift?.started_at)}
+              value={formatTime(displayShift?.started_at)}
+              helper={formatDate(displayShift?.started_at)}
+              tone="sky"
             />
-            <InfoCard
-              icon={RefreshCw}
+            <SummaryCard
+              icon={TimerReset}
               label="Ended at"
-              value={shiftState.is_on_duty ? 'Active now' : formatDateTime(displayShift?.ended_at)}
+              value={shiftState.is_on_duty ? 'Active now' : formatTime(displayShift?.ended_at)}
+              helper={shiftState.is_on_duty ? 'Current shift' : formatDate(displayShift?.ended_at)}
+              tone="emerald"
             />
-            <InfoCard
-              icon={ShieldCheck}
-              label="Queue access"
-              value={shiftState.is_on_duty ? 'Claiming enabled' : 'Claiming paused'}
-            />
-            <InfoCard
-              icon={AlertTriangle}
-              label="Status updates"
-              value={shiftState.is_on_duty ? 'Replies enabled' : 'Read-only mode'}
+            <SummaryCard
+              icon={CheckCircle2}
+              label="Completed today"
+              value={String(completedToday)}
+              helper="Resolved tickets and completed appointments"
+              tone="violet"
             />
           </div>
         </div>
       </div>
 
-      <div className="rounded-lg border bg-white p-5 shadow-sm">
-        <h2 className="font-semibold">Shift rules</h2>
+      <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <div className="flex flex-col justify-between gap-4 border-b bg-slate-50 px-5 py-4 lg:flex-row lg:items-center">
+          <div className="flex items-start gap-3">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
+              <FileClock className="size-5" />
+            </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <RuleCard title="Start shift" text="Only one staff shift can be recorded per day." />
-          <RuleCard title="During shift" text="Claim requests, update statuses, and send replies." />
-          <RuleCard title="End shift" text="Once ended, the shift cannot be restarted again today." />
+            <div>
+              <h2 className="font-semibold">Shift history</h2>
+              <p className="text-sm text-muted-foreground">
+                Review your staff attendance records, session duration, and completed work.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:w-auto sm:min-w-[280px]">
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+              aria-label="Date from"
+              className="min-w-0 bg-white"
+            />
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+              aria-label="Date to"
+              className="min-w-0 bg-white"
+            />
+          </div>
         </div>
-      </div>
 
-      <Dialog open={isEndDialogOpen} onOpenChange={setIsEndDialogOpen}>
-        <DialogContent className="!max-w-md overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <div className={TABLE_MIN_WIDTH}>
+            <div
+              className={cn(
+                'grid border-b bg-slate-50 px-5 py-3 text-xs font-semibold uppercase text-muted-foreground',
+                TABLE_COLUMNS
+              )}
+            >
+              <p>Date</p>
+              <p>Time in</p>
+              <p>Time out</p>
+              <p>Duration</p>
+              <p>Close type</p>
+              <p>Completed work</p>
+              <p>Status</p>
+            </div>
+
+            {isLoading ? (
+              <div className="px-5 py-10 text-sm text-muted-foreground">
+                Loading shift history...
+              </div>
+            ) : shifts.length ? (
+              shifts.map((shift) => (
+                <article
+                  key={shift.id}
+                  className={cn(
+                    'grid items-center border-b px-5 py-4 text-sm last:border-b-0',
+                    TABLE_COLUMNS
+                  )}
+                >
+                  <div>
+                    <p className="font-medium">{formatDate(shift.started_at)}</p>
+                  </div>
+
+                  <p>{formatTime(shift.started_at)}</p>
+                  <p>{shift.ended_at ? formatTime(shift.ended_at) : 'Active now'}</p>
+                  <p className="font-medium">{formatDuration(shift.duration_minutes)}</p>
+
+                  <Badge variant="secondary" className="w-fit border-0 bg-slate-100 text-slate-700">
+                    {formatEndReason(shift.end_reason)}
+                  </Badge>
+
+                  <p
+                    className="truncate text-sm text-muted-foreground"
+                    title={`${shift.completed_tickets} tickets, ${shift.completed_appointments} appointments`}
+                  >
+                    <span className="font-medium text-sky-700">{shift.completed_tickets}</span> tickets -{' '}
+                    <span className="font-medium text-emerald-700">
+                      {shift.completed_appointments}
+                    </span>{' '}
+                    appts
+                  </p>
+
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      'w-fit border-0 capitalize',
+                      shift.status === 'active'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-slate-100 text-slate-700'
+                    )}
+                  >
+                    {shift.status}
+                  </Badge>
+                </article>
+              ))
+            ) : (
+              <div className="px-5 py-10 text-sm text-muted-foreground">
+                No shift records found for this date range.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 border-t bg-slate-50 px-5 py-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Page {meta.current_page} of {meta.last_page} - {meta.total} shift
+            {meta.total === 1 ? '' : 's'}
+          </span>
+
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer bg-white"
+              disabled={meta.current_page <= 1}
+              onClick={() => setPage((page) => Math.max(page - 1, 1))}
+            >
+              <ChevronLeft className="size-4" />
+              Previous
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer bg-white"
+              disabled={meta.current_page >= meta.last_page}
+              onClick={() => setPage((page) => Math.min(page + 1, meta.last_page))}
+            >
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      <Dialog open={isEndShiftOpen} onOpenChange={setIsEndShiftOpen}>
+        <DialogContent className="!max-w-lg overflow-hidden p-0">
           <div className="border-b bg-amber-50 px-5 py-4">
             <DialogHeader>
-              <div className="flex items-start gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-white text-amber-700">
-                  <AlertTriangle className="size-5" />
-                </div>
-
-                <div>
-                  <DialogTitle>End your shift?</DialogTitle>
-                  <DialogDescription className="mt-1">
-                    Choose how this shift should be closed for today.
-                  </DialogDescription>
-                </div>
-              </div>
+              <DialogTitle>End your shift?</DialogTitle>
+              <DialogDescription>
+                Choose how this shift should be closed for today.
+              </DialogDescription>
             </DialogHeader>
           </div>
 
-          <div className="space-y-4 px-5 py-4">
-            <div className="grid grid-cols-2 gap-1 rounded-lg border bg-slate-50 p-1">
-              {endShiftOptions.map((option) => (
+          <div className="space-y-4 px-5 py-5">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {[
+                {
+                  value: 'early_out',
+                  label: 'Early out',
+                  description: 'Close this shift before your regular end time.',
+                },
+                {
+                  value: 'end_shift',
+                  label: 'End shift',
+                  description: 'Normal shift close for today.',
+                },
+              ].map((reason) => (
                 <button
-                  key={option.value}
+                  key={reason.value}
                   type="button"
-                  onClick={() => setEndShiftReason(option.value)}
+                  onClick={() => setEndShiftReason(reason.value as StaffShiftEndReason)}
                   className={cn(
-                    'cursor-pointer rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                    endShiftReason === option.value
-                      ? 'bg-amber-500 text-white shadow-sm'
-                      : 'text-slate-600 hover:bg-white'
+                    'cursor-pointer rounded-lg border p-3 text-left transition-colors',
+                    endShiftReason === reason.value
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
                   )}
                 >
-                  {option.label}
+                  <p className="font-medium">{reason.label}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {reason.description}
+                  </p>
                 </button>
               ))}
             </div>
 
-            <p className="text-xs leading-5 text-muted-foreground">
-              {selectedEndShift.description}
-            </p>
-
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-              Assigned requests will stay assigned to you. Status updates and staff replies are paused until your next shift.
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <p className="text-sm leading-6 text-muted-foreground">
+                Assigned requests will stay assigned to you. Status updates and staff replies pause
+                until your next shift.
+              </p>
             </div>
 
             <div className="grid gap-2 sm:grid-cols-3">
-              <ShiftInfoCard label="Started at" value={formatDateTime(shiftState.shift?.started_at)} />
-              <ShiftInfoCard label="Ending at" value={formatNowDateTime()} />
-              <ShiftInfoCard label="Current session" value={getElapsed(shiftState.shift?.started_at)} />
+              <ShiftDialogMetric
+                label="Started at"
+                value={formatTime(shiftState.shift?.started_at)}
+                helper={formatDate(shiftState.shift?.started_at)}
+              />
+              <ShiftDialogMetric
+                label="Ending at"
+                value={formatTime(endingPreview)}
+                helper={formatDate(endingPreview)}
+              />
+              <ShiftDialogMetric
+                label="Session"
+                value={getLiveDuration(shiftState.shift?.started_at, nowTick)}
+              />
             </div>
           </div>
 
@@ -335,20 +532,18 @@ export function StaffShiftsPanel() {
               type="button"
               variant="outline"
               className="cursor-pointer bg-white"
-              onClick={() => setIsEndDialogOpen(false)}
-              disabled={isUpdating}
+              onClick={() => setIsEndShiftOpen(false)}
             >
               Cancel
             </Button>
-
             <Button
               type="button"
               variant="destructive"
               className="cursor-pointer"
               onClick={handleEndShift}
-              disabled={isUpdating}
+              disabled={isUpdatingShift}
             >
-              Confirm {selectedEndShift.label}
+              End shift
             </Button>
           </div>
         </DialogContent>
@@ -357,38 +552,49 @@ export function StaffShiftsPanel() {
   )
 }
 
-function InfoCard({
+function SummaryCard({
   icon: Icon,
   label,
   value,
+  helper,
+  tone,
 }: {
   icon: LucideIcon
   label: string
   value: string
+  helper: string
+  tone: 'sky' | 'emerald' | 'violet'
+}) {
+  const toneStyles = {
+    sky: 'border-sky-200 bg-sky-50 text-sky-700',
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    violet: 'border-violet-200 bg-violet-50 text-violet-700',
+  }
+
+  return (
+    <div className={cn('rounded-lg border p-4', toneStyles[tone])}>
+      <Icon className="size-4" />
+      <p className="mt-3 text-sm text-slate-600">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-slate-950">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-slate-500">{helper}</p>
+    </div>
+  )
+}
+
+function ShiftDialogMetric({
+  label,
+  value,
+  helper,
+}: {
+  label: string
+  value: string
+  helper?: string
 }) {
   return (
-    <div className="rounded-lg border bg-slate-50 p-4">
-      <Icon className="size-4 text-muted-foreground" />
-      <p className="mt-3 text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 font-medium">{value}</p>
-    </div>
-  )
-}
-
-function RuleCard({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-lg border bg-slate-50 p-4">
-      <p className="font-medium">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p>
-    </div>
-  )
-}
-
-function ShiftInfoCard({ label, value }: { label: string; value: string }) {
-  return (
     <div className="rounded-lg border bg-white p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-medium">{value}</p>
+      <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-semibold">{value}</p>
+      {helper ? <p className="mt-0.5 text-xs text-muted-foreground">{helper}</p> : null}
     </div>
   )
 }

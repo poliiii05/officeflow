@@ -9,7 +9,16 @@ import { getApiErrorMessage } from '@/features/auth/auth-api'
 import type { AuthUser } from '@/lib/auth-storage'
 import { cn } from '@/lib/utils'
 
-type PasswordField = 'current' | 'new' | 'confirmation'
+// Previously a single `visibleField: PasswordField | null` shared across all
+// three inputs meant showing one field auto-hid whichever was showing
+// before it — you could never see "New password" and "Confirm password" at
+// the same time to check they matched. Independent booleans per field fix
+// that.
+type VisibleFields = {
+  current: boolean
+  new: boolean
+  confirmation: boolean
+}
 
 export function PasswordSection({
   user,
@@ -22,10 +31,18 @@ export function PasswordSection({
   const [currentPassword, setCurrentPassword] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
-  const [visibleField, setVisibleField] = useState<PasswordField | null>(null)
+  const [visibleFields, setVisibleFields] = useState<VisibleFields>({
+    current: false,
+    new: false,
+    confirmation: false,
+  })
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+
+  function toggleVisible(field: keyof VisibleFields) {
+    setVisibleFields((current) => ({ ...current, [field]: !current[field] }))
+  }
 
   const passwordRequirements = useMemo(
     () => [
@@ -68,7 +85,7 @@ export function PasswordSection({
       setCurrentPassword('')
       setPassword('')
       setPasswordConfirmation('')
-      setVisibleField(null)
+      setVisibleFields({ current: false, new: false, confirmation: false })
       setMessage(response.message)
     } catch (passwordError) {
       setError(getApiErrorMessage(passwordError, 'Unable to update password.'))
@@ -114,7 +131,10 @@ export function PasswordSection({
 
       <div className="space-y-5 p-5">
         {error ? (
-          <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <p
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          >
             {error}
           </p>
         ) : null}
@@ -127,9 +147,10 @@ export function PasswordSection({
             onChange={(value) => {
               setCurrentPassword(value)
               setMessage('')
+              setError('')
             }}
-            visible={visibleField === 'current'}
-            onToggle={() => setVisibleField(visibleField === 'current' ? null : 'current')}
+            visible={visibleFields.current}
+            onToggle={() => toggleVisible('current')}
             autoComplete="current-password"
           />
           <PasswordInput
@@ -139,9 +160,10 @@ export function PasswordSection({
             onChange={(value) => {
               setPassword(value)
               setMessage('')
+              setError('')
             }}
-            visible={visibleField === 'new'}
-            onToggle={() => setVisibleField(visibleField === 'new' ? null : 'new')}
+            visible={visibleFields.new}
+            onToggle={() => toggleVisible('new')}
             autoComplete="new-password"
           />
           <PasswordInput
@@ -151,11 +173,10 @@ export function PasswordSection({
             onChange={(value) => {
               setPasswordConfirmation(value)
               setMessage('')
+              setError('')
             }}
-            visible={visibleField === 'confirmation'}
-            onToggle={() =>
-              setVisibleField(visibleField === 'confirmation' ? null : 'confirmation')
-            }
+            visible={visibleFields.confirmation}
+            onToggle={() => toggleVisible('confirmation')}
             autoComplete="new-password"
           />
         </div>

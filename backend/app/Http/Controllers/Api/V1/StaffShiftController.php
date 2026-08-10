@@ -3,13 +3,79 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Appointment;
 use App\Models\AuditLog;
 use App\Models\StaffShift;
+use App\Models\Ticket;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class StaffShiftController extends Controller
 {
+        public function index(Request $request): JsonResponse
+    {
+        $this->ensureStaffUser($request);
+
+        $validated = $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+        ]);
+
+        $user = $request->user();
+        $perPage = (int) ($validated['per_page'] ?? 10);
+
+        $shifts = StaffShift::query()
+            ->where('user_id', $user->id)
+            ->when($validated['date_from'] ?? null, fn ($query, $date) => $query->whereDate('started_at', '>=', $date))
+            ->when($validated['date_to'] ?? null, fn ($query, $date) => $query->whereDate('started_at', '<=', $date))
+            ->latest('started_at')
+            ->paginate($perPage);
+
+        $items = $shifts->getCollection()->map(function (StaffShift $shift) use ($user) {
+            $startedAt = $shift->started_at;
+            $endedAt = $shift->ended_at ?? now();
+
+            $completedTickets = Ticket::query()
+                ->where('assigned_to_id', $user->id)
+                ->whereIn('status', ['resolved', 'closed'])
+                ->whereBetween('updated_at', [$startedAt, $endedAt])
+                ->count();
+
+            $completedAppointments = Appointment::query()
+                ->where('assigned_to_id', $user->id)
+                ->where('status', 'completed')
+                ->whereBetween('updated_at', [$startedAt, $endedAt])
+                ->count();
+
+            return [
+                'id' => $shift->id,
+                'user_id' => $shift->user_id,
+                'started_at' => $shift->started_at,
+                'ended_at' => $shift->ended_at,
+                'status' => $shift->status,
+                'end_reason' => $shift->end_reason,
+                'duration_minutes' => $startedAt ? (int) $startedAt->diffInMinutes($endedAt) : 0,
+                'completed_tickets' => $completedTickets,
+                'completed_appointments' => $completedAppointments,
+                'completed_total' => $completedTickets + $completedAppointments,
+                'created_at' => $shift->created_at,
+                'updated_at' => $shift->updated_at,
+            ];
+        });
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $shifts->currentPage(),
+                'last_page' => $shifts->lastPage(),
+                'per_page' => $shifts->perPage(),
+                'total' => $shifts->total(),
+            ],
+        ]);
+    }
+
     public function current(Request $request): JsonResponse
     {
         $this->ensureStaffUser($request);

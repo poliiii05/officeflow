@@ -7,8 +7,8 @@ import {
   Tooltip,
   type ChartOptions,
 } from 'chart.js'
-import { BarChart3, RefreshCw } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { BarChart3 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bar } from 'react-chartjs-2'
 
 import {
@@ -16,6 +16,7 @@ import {
   type StaffProductivity,
   type StaffProductivityRange,
 } from '@/features/staff/analytics/staff-analytics-api'
+import { echo } from '@/lib/echo'
 import { cn } from '@/lib/utils'
 
 ChartJS.register(BarElement, CategoryScale, Legend, LinearScale, Tooltip)
@@ -28,22 +29,50 @@ export function StaffProductivityChart() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const loadProductivity = useCallback(async () => {
-    try {
-      setError('')
-      const data = await getStaffProductivity(days)
-      setProductivity(data)
-    } catch {
-      setError('Unable to load productivity trend.')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [days])
+  const loadProductivity = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) setIsLoading(true)
+
+      try {
+        setError('')
+        const data = await getStaffProductivity(days)
+        setProductivity(data)
+      } catch {
+        setError('Unable to load productivity trend.')
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [days]
+  )
+
+  const loadProductivityRef = useRef(loadProductivity)
 
   useEffect(() => {
-    setIsLoading(true)
+    loadProductivityRef.current = loadProductivity
+  }, [loadProductivity])
+
+  useEffect(() => {
     void loadProductivity()
   }, [loadProductivity])
+
+  useEffect(() => {
+    const channel = echo.channel('officeflow.staff')
+
+    channel.listen('.ticket.changed', () => {
+      void loadProductivityRef.current({ silent: true })
+    })
+
+    channel.listen('.appointment.changed', () => {
+      void loadProductivityRef.current({ silent: true })
+    })
+
+    return () => {
+      channel.stopListening('.ticket.changed')
+      channel.stopListening('.appointment.changed')
+      echo.leaveChannel('officeflow.staff')
+    }
+  }, [])
 
   const chartData = useMemo(
     () => ({
@@ -121,15 +150,6 @@ export function StaffProductivityChart() {
               {option} days
             </button>
           ))}
-
-          <button
-            type="button"
-            onClick={() => void loadProductivity()}
-            className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border bg-white px-3 text-xs font-medium text-muted-foreground shadow-xs hover:bg-slate-50"
-          >
-            <RefreshCw className={cn('size-3.5', isLoading && 'animate-spin')} />
-            Sync
-          </button>
         </div>
       </div>
 
@@ -147,6 +167,10 @@ export function StaffProductivityChart() {
 
       {error ? (
         <div className="border-t px-5 py-3 text-sm text-destructive">{error}</div>
+      ) : null}
+
+      {isLoading ? (
+        <div className="border-t px-5 py-3 text-xs text-muted-foreground">Loading productivity...</div>
       ) : null}
     </section>
   )

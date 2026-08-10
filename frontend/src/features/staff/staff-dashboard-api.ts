@@ -18,6 +18,8 @@ export type StaffDashboardTotals = {
 export type StaffOverviewParams = {
   view: StaffQueueView
   search?: string
+  date_from?: string
+  date_to?: string
   ticket_page?: number
   appointment_page?: number
   per_page?: number

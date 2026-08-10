@@ -1,4 +1,4 @@
-import { ListChecks, RefreshCw, Search } from 'lucide-react'
+import { ListChecks, Search } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -52,39 +52,34 @@ export function StaffWorkPanel() {
 })
   const [isLoading, setIsLoading] = useState(true)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [updatingKey, setUpdatingKey] = useState<string | null>(null)
   const [error, setError] = useState('')
+const loadWork = useCallback(
+  async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setIsLoading(true)
 
-  const loadWork = useCallback(
-    async ({ silent = false }: { silent?: boolean } = {}) => {
-      silent ? setIsRefreshing(true) : setIsLoading(true)
+    try {
+      const response = await getStaffOverview({
+        view: 'mine',
+        ticket_page: ticketPage,
+        appointment_page: appointmentPage,
+        per_page: 10,
+        search: debouncedSearch || undefined,
+      })
 
-      try {
-        const response = await getStaffOverview({
-          view: 'mine',
-          ticket_page: ticketPage,
-          appointment_page: appointmentPage,
-          per_page: 10,
-          search: debouncedSearch || undefined,
-        })
-
-        setTickets(response.data.tickets.data)
-        setTicketMeta(response.data.tickets.meta)
-        setAppointments(response.data.appointments.data)
-        setAppointmentMeta(response.data.appointments.meta)
-        setTotals(response.data.totals)
-        setError('')
-        setHasLoadedOnce(true)
-      } catch (error) {
-        setError(getApiErrorMessage(error, 'Unable to load assigned work.'))
-      } finally {
-        setIsLoading(false)
-        setIsRefreshing(false)
-      }
-    },
-    [appointmentPage, debouncedSearch, ticketPage]
-  )
+      setTickets(response.data.tickets.data)
+      setTicketMeta(response.data.tickets.meta)
+      setAppointments(response.data.appointments.data)
+      setAppointmentMeta(response.data.appointments.meta)
+      setError('')
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'Unable to load assigned work.'))
+    } finally {
+      setIsLoading(false)
+    }
+  },
+  [appointmentPage, debouncedSearch, ticketPage]
+)
 
   const loadWorkRef = useRef(loadWork)
 
@@ -197,11 +192,6 @@ export function StaffWorkPanel() {
               <div className="relative min-w-72">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search my work..." className="pl-9" />
-              </div>
-
-              <div className="inline-flex items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm text-muted-foreground">
-                <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin')} />
-                Live sync
               </div>
             </div>
           </div>

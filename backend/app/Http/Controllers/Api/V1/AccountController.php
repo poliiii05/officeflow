@@ -21,12 +21,25 @@ class AccountController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'min:2', 'max:255'],
+            // Unicode-aware (u modifier + \p{L}/\p{N}) so names with
+            // diacritics (Niño, José, etc.) match the frontend's
+            // \p{L} regex instead of being silently rejected here.
+            'nickname' => ['nullable', 'string', 'max:80', 'regex:/^[\p{L}\p{N} ._-]+$/u'],
+        ], [], [
+            // UI calls this field "Display name" — keep Laravel's default
+            // validation error text ("The nickname field...") in sync so a
+            // 422 response doesn't say "nickname" while the form says
+            // "Display name".
+            'nickname' => 'display name',
         ]);
 
         $user = $request->user();
 
         $user->forceFill([
             'name' => trim($validated['name']),
+            'nickname' => isset($validated['nickname']) && trim($validated['nickname']) !== ''
+                ? trim($validated['nickname'])
+                : null,
         ])->save();
 
         return response()->json([

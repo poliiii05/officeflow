@@ -1,4 +1,4 @@
-import { CheckCircle2, Mail } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Mail } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import type { AuthUser } from '@/lib/auth-storage'
@@ -29,7 +29,7 @@ export function EmailSection({
               <Mail className="size-5" />
             </div>
             <div className="min-w-0">
-              <p className="break-all font-medium">{user.email}</p>
+              <p className="max-w-full break-all font-medium leading-6">{user.email}</p>
               <p className="mt-1 text-sm text-muted-foreground">Primary email address</p>
             </div>
           </div>
@@ -40,7 +40,13 @@ export function EmailSection({
               isVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
             )}
           >
-            <CheckCircle2 className="mr-1 size-3.5" />
+            {/* AlertCircle for the unverified state — CheckCircle2 on an
+                amber "action needed" badge read as a false success signal. */}
+            {isVerified ? (
+              <CheckCircle2 className="mr-1 size-3.5" />
+            ) : (
+              <AlertCircle className="mr-1 size-3.5" />
+            )}
             {isVerified ? 'Verified' : 'Verification required'}
           </Badge>
         </div>

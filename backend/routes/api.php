@@ -161,6 +161,9 @@
 
             Route::patch('/account/password', [AccountController::class, 'updatePassword'])
             ->middleware('throttle:30,1');
+
+            Route::get('/staff/shifts', [StaffShiftController::class, 'index'])
+            ->middleware('throttle:180,1');
             
         });
     });
