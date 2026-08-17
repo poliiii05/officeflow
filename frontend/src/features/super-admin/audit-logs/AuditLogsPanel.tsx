@@ -265,6 +265,12 @@ function AuditLogRow({ log }: { log: AuditLog }) {
   const Icon = moduleIcons[log.module] ?? Activity
   const roleChange = getRoleChange(log)
   const statusChange = getStatusChange(log)
+  // Only render the activity pill when it says something the title above it
+  // doesn't already say (e.g. "On Duty"/"Off Duty" status). For the generic
+  // fallback case, the pill was just restating the title in different
+  // words ("...updated ticket assignment." + "Assignment Updated"), so we
+  // skip it there instead of showing duplicate text.
+  const showActivitySummary = !roleChange && !statusChange && hasDistinctActivityLabel(log)
 
   return (
     <tr className="transition-colors hover:bg-slate-50/70">
@@ -307,7 +313,7 @@ function AuditLogRow({ log }: { log: AuditLog }) {
       </td>
 
       <td className="px-5 py-4 align-middle">
-        <Badge variant="secondary" className="w-fit border-0 capitalize">
+       <Badge variant="secondary" className="inline-flex w-fit whitespace-nowrap border-0 capitalize">
           {formatAction(log.action)}
         </Badge>
       </td>
@@ -316,15 +322,20 @@ function AuditLogRow({ log }: { log: AuditLog }) {
         <div className="w-full">
           <p className="font-medium">{getAuditTitle(log)}</p>
 
-          <div className="mt-2 flex justify-start">
-            {roleChange ? (
-              <ChangeSummary oldValue={roleChange.oldRole} newValue={roleChange.newRole} />
-            ) : statusChange ? (
-              <ChangeSummary oldValue={statusChange.oldStatus} newValue={statusChange.newStatus} />
-            ) : (
-              <ActivitySummary log={log} />
-            )}
-          </div>
+          {roleChange || statusChange || showActivitySummary ? (
+            <div className="mt-2 flex justify-start">
+              {roleChange ? (
+                <ChangeSummary oldValue={roleChange.oldRole} newValue={roleChange.newRole} />
+              ) : statusChange ? (
+                <ChangeSummary
+                  oldValue={statusChange.oldStatus}
+                  newValue={statusChange.newStatus}
+                />
+              ) : (
+                <ActivitySummary log={log} />
+              )}
+            </div>
+          ) : null}
         </div>
       </td>
     </tr>
@@ -349,10 +360,10 @@ function ChangeSummary({
 
 function ActivitySummary({ log }: { log: AuditLog }) {
   return (
-    <div className="flex items-center">
+    <div className="flex min-w-[12rem] items-center">
       <span
         className={cn(
-          'inline-flex w-36 items-center justify-center rounded-full px-3 py-1 text-xs font-medium',
+          'inline-flex min-w-[11.5rem] items-center justify-center whitespace-nowrap rounded-full px-4 py-1 text-xs font-medium',
           getActivityStyle(log)
         )}
       >
@@ -428,6 +439,27 @@ function getAuditTitle(log: AuditLog) {
   }
 
   return cleanDescription(log.description)
+}
+
+// Cases where the pill in the Details column adds information the title
+// doesn't already convey (a duty status, a "new record" flag). Everything
+// else falls back to formatAction(log.action), which just repeats the
+// title in Title Case - that fallback case is intentionally not covered
+// here, see `showActivitySummary` in AuditLogRow.
+function hasDistinctActivityLabel(log: AuditLog) {
+  if (log.module === 'staff_shifts') {
+    return true
+  }
+
+  if (log.module === 'tickets' && log.action === 'created') {
+    return true
+  }
+
+  if (log.module === 'appointments' && ['created', 'scheduled'].includes(log.action)) {
+    return true
+  }
+
+  return false
 }
 
 function getActivityLabel(log: AuditLog) {

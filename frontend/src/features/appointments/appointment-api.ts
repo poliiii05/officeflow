@@ -42,6 +42,8 @@ export type AppointmentListParams = {
   status?: string
   department?: string
   search?: string
+  date_from?: string
+  date_to?: string
   page?: number
   per_page?: number
 }
@@ -100,12 +102,16 @@ export async function updateAppointmentStatus(
   return response.data
 }
 
-export async function assignAppointment(appointmentId: number) {
+export async function assignAppointment(
+  appointmentId: number,
+  assignedToId?: number | null
+) {
   const response = await api.patch<{ data: Appointment; message: string }>(
-    `/appointments/${appointmentId}/assign`
+    `/appointments/${appointmentId}/assign`,
+    assignedToId === undefined ? {} : { assigned_to_id: assignedToId }
   )
 
-  return response.data
+  return response.data.data
 }
 
 export async function getAppointmentActivities(appointmentId: number) {

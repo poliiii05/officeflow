@@ -44,42 +44,45 @@ export function StaffWorkPanel() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [shiftState, setShiftState] = useState<StaffShiftState>({
-  is_on_duty: false,
-  can_start_shift: true,
-  has_shift_today: false,
-  shift: null,
-  today_shift: null,
-})
+    is_on_duty: false,
+    can_start_shift: true,
+    has_shift_today: false,
+    shift: null,
+    today_shift: null,
+  })
   const [isLoading, setIsLoading] = useState(true)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const [updatingKey, setUpdatingKey] = useState<string | null>(null)
   const [error, setError] = useState('')
-const loadWork = useCallback(
-  async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (!silent) setIsLoading(true)
 
-    try {
-      const response = await getStaffOverview({
-        view: 'mine',
-        ticket_page: ticketPage,
-        appointment_page: appointmentPage,
-        per_page: 10,
-        search: debouncedSearch || undefined,
-      })
+  const loadWork = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) setIsLoading(true)
 
-      setTickets(response.data.tickets.data)
-      setTicketMeta(response.data.tickets.meta)
-      setAppointments(response.data.appointments.data)
-      setAppointmentMeta(response.data.appointments.meta)
-      setError('')
-    } catch (error) {
-      setError(getApiErrorMessage(error, 'Unable to load assigned work.'))
-    } finally {
-      setIsLoading(false)
-    }
-  },
-  [appointmentPage, debouncedSearch, ticketPage]
-)
+      try {
+        const response = await getStaffOverview({
+          view: 'mine',
+          ticket_page: ticketPage,
+          appointment_page: appointmentPage,
+          per_page: 10,
+          search: debouncedSearch || undefined,
+        })
+
+        setTickets(response.data.tickets.data)
+        setTicketMeta(response.data.tickets.meta)
+        setAppointments(response.data.appointments.data)
+        setAppointmentMeta(response.data.appointments.meta)
+        setTotals(response.data.totals)
+        setError('')
+      } catch (error) {
+        setError(getApiErrorMessage(error, 'Unable to load assigned work.'))
+      } finally {
+        setIsLoading(false)
+        setHasLoadedOnce(true)
+      }
+    },
+    [appointmentPage, debouncedSearch, ticketPage]
+  )
 
   const loadWorkRef = useRef(loadWork)
 
@@ -179,7 +182,15 @@ const loadWork = useCallback(
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-lg font-semibold">Assigned requests</h2>
-                <Badge variant="secondary" className={cn('border-0', shiftState.is_on_duty ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700')}>
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    'border-0',
+                    shiftState.is_on_duty
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-slate-200 text-slate-700'
+                  )}
+                >
                   {shiftState.is_on_duty ? 'On duty' : 'Off duty'}
                 </Badge>
               </div>
@@ -188,11 +199,14 @@ const loadWork = useCallback(
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative min-w-72">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search my work..." className="pl-9" />
-              </div>
+            <div className="relative min-w-72">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search my work..."
+                className="pl-9"
+              />
             </div>
           </div>
 

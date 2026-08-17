@@ -13,6 +13,8 @@ use App\Notifications\TicketReplyNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Models\User;
+use App\Models\StaffShift;
 
 class TicketController extends Controller
 {
@@ -26,6 +28,8 @@ class TicketController extends Controller
             'search' => ['nullable', 'string', 'max:100'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ]);
 
         $user = $request->user();
@@ -52,6 +56,8 @@ class TicketController extends Controller
             })
             ->when($validated['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($validated['priority'] ?? null, fn ($query, $priority) => $query->where('priority', $priority))
+            ->when($validated['date_from'] ?? null,fn ($query, $date) => $query->whereDate('created_at', '>=', $date))
+            ->when($validated['date_to'] ?? null,fn ($query, $date) => $query->whereDate('created_at', '<=', $date))
             ->when($validated['department'] ?? null, fn ($query, $department) => $query->where('department', $department))
             ->when($validated['search'] ?? null, function ($query, $search) {
                 $query->where(function ($innerQuery) use ($search) {
@@ -135,121 +141,152 @@ class TicketController extends Controller
         ]);
     }
 
-    public function updateStatus(Request $request, Ticket $ticket): JsonResponse
-    {
-        $this->ensureStaffUser($request);
+   public function updateStatus(Request $request, Ticket $ticket): JsonResponse
+{
+    $this->ensureStaffUser($request);
 
-        $validated = $request->validate([
-            'status' => ['required', 'in:open,in_progress,resolved,closed'],
-        ]);
+    $validated = $request->validate([
+        'status' => ['required', 'in:open,in_progress,resolved,closed'],
+    ]);
 
-        $oldStatus = $ticket->status;
-        $oldAssignedToId = $ticket->assigned_to_id;
+    $actor = $request->user();
+    $requiresAssignee = in_array($validated['status'], ['in_progress', 'resolved', 'closed'], true);
 
-        $updates = [
-            'status' => $validated['status'],
-            'resolved_at' => in_array($validated['status'], ['resolved', 'closed'], true) ? now() : null,
-        ];
-
-        if (
-            in_array($validated['status'], ['in_progress', 'resolved', 'closed'], true) &&
-            $ticket->assigned_to_id === null
-        ) {
-            $updates['assigned_to_id'] = $request->user()->id;
-        }
-
-        $ticket->update($updates);
-
-        $freshTicket = $ticket->fresh();
-
-        if ($oldStatus !== $freshTicket->status) {
-            $this->recordVisibleActivity(
-                $request,
-                $freshTicket,
-                'status_update',
-                'Ticket status changed from '.str_replace('_', ' ', $oldStatus)
-                    .' to '.str_replace('_', ' ', $freshTicket->status).'.'
-            );
-        }
-
-        AuditLog::record(
-            $request->user(),
-            'tickets',
-            'status_updated',
-            "{$request->user()->name} changed ticket {$freshTicket->ticket_number} from {$oldStatus} to {$freshTicket->status}.",
-            $freshTicket,
-            [
-                'ticket_number' => $freshTicket->ticket_number,
-                'old_status' => $oldStatus,
-                'new_status' => $freshTicket->status,
-                'old_assigned_to_id' => $oldAssignedToId,
-                'new_assigned_to_id' => $freshTicket->assigned_to_id,
-            ],
-            $request
-        );
-
-        broadcast(new TicketChanged($freshTicket, 'status_updated'))->toOthers();
-
-        return response()->json([
-            'data' => $freshTicket->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
-            'message' => 'Ticket status updated successfully.',
-        ]);
+    if ($actor->role === 'staff' && $ticket->assigned_to_id !== null && $ticket->assigned_to_id !== $actor->id) {
+        abort(403, 'This ticket is assigned to another staff member.');
     }
 
-    public function assign(Request $request, Ticket $ticket): JsonResponse
-    {
-        $this->ensureStaffUser($request);
+    if ($actor->role === 'super_admin' && $requiresAssignee && $ticket->assigned_to_id === null) {
+        abort(422, 'Assign this ticket to a staff member before updating its status.');
+    }
 
-        $validated = $request->validate([
-            'assigned_to_id' => ['nullable', 'exists:users,id'],
-        ]);
+    $oldStatus = $ticket->status;
+    $oldAssignedToId = $ticket->assigned_to_id;
 
-        $oldAssignedToId = $ticket->assigned_to_id;
+    $updates = [
+        'status' => $validated['status'],
+        'resolved_at' => in_array($validated['status'], ['resolved', 'closed'], true) ? now() : null,
+    ];
+
+    if ($actor->role === 'staff' && $requiresAssignee && $ticket->assigned_to_id === null) {
+        $updates['assigned_to_id'] = $actor->id;
+    }
+
+    $ticket->update($updates);
+
+    $freshTicket = $ticket->fresh();
+
+    if ($oldStatus !== $freshTicket->status) {
+        $this->recordVisibleActivity(
+            $request,
+            $freshTicket,
+            'status_update',
+            'Ticket status changed from '.str_replace('_', ' ', $oldStatus)
+                .' to '.str_replace('_', ' ', $freshTicket->status).'.'
+        );
+    }
+
+    AuditLog::record(
+        $actor,
+        'tickets',
+        'status_updated',
+        "{$actor->name} changed ticket {$freshTicket->ticket_number} from {$oldStatus} to {$freshTicket->status}.",
+        $freshTicket,
+        [
+            'ticket_number' => $freshTicket->ticket_number,
+            'old_status' => $oldStatus,
+            'new_status' => $freshTicket->status,
+            'old_assigned_to_id' => $oldAssignedToId,
+            'new_assigned_to_id' => $freshTicket->assigned_to_id,
+        ],
+        $request
+    );
+
+    broadcast(new TicketChanged($freshTicket, 'status_updated'))->toOthers();
+
+    return response()->json([
+        'data' => $freshTicket->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
+        'message' => 'Ticket status updated successfully.',
+    ]);
+}
+
+public function assign(Request $request, Ticket $ticket): JsonResponse
+{
+    $this->ensureStaffUser($request);
+
+    if (in_array($ticket->status, ['resolved', 'closed'], true)) {
+        abort(422, 'Resolved or closed tickets cannot be reassigned.');
+    }
+
+    $validated = $request->validate([
+        'assigned_to_id' => ['nullable', 'integer', 'exists:users,id'],
+    ]);
+
+    $actor = $request->user();
+    $oldAssignedToId = $ticket->assigned_to_id;
+
+    if ($actor->role === 'staff') {
+        if ($ticket->assigned_to_id !== null && $ticket->assigned_to_id !== $actor->id) {
+            abort(409, 'This ticket has already been claimed by another staff member.');
+        }
+
+        $newAssignedToId = $actor->id;
+    } else {
         $newAssignedToId = $validated['assigned_to_id'] ?? null;
 
-        $ticket->update([
-            'assigned_to_id' => $newAssignedToId,
-        ]);
+            if ($newAssignedToId !== null) {
+            $assignee = User::select(['id', 'role'])->find($newAssignedToId);
 
-        $freshTicket = $ticket->fresh();
+            if (! $assignee) {
+                abort(422, 'Selected staff account was not found.');
+            }
 
-        if ($oldAssignedToId !== $freshTicket->assigned_to_id) {
-            $assignmentMessage = match (true) {
-                $freshTicket->assigned_to_id === null => 'Ticket assignment was cleared.',
-                $freshTicket->assigned_to_id === $request->user()->id =>
-                    'Ticket was claimed by '.$request->user()->name.'.',
-                default => 'Ticket assignment was updated by '.$request->user()->name.'.',
-            };
-
-            $this->recordVisibleActivity(
-                $request,
-                $freshTicket,
-                'assigned',
-                $assignmentMessage
-            );
+            $this->ensureAssignableStaff($assignee, 'Tickets');
         }
-
-        AuditLog::record(
-            $request->user(),
-            'tickets',
-            'assignment_updated',
-            "{$request->user()->name} updated ticket {$freshTicket->ticket_number} assignment.",
-            $freshTicket,
-            [
-                'ticket_number' => $freshTicket->ticket_number,
-                'old_assigned_to_id' => $oldAssignedToId,
-                'new_assigned_to_id' => $freshTicket->assigned_to_id,
-            ],
-            $request
-        );
-
-        broadcast(new TicketChanged($freshTicket, 'assigned'))->toOthers();
-
-        return response()->json([
-            'data' => $freshTicket->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
-            'message' => 'Ticket assignment updated successfully.',
-        ]);
     }
+
+    $updates = ['assigned_to_id' => $newAssignedToId];
+
+    if ($newAssignedToId === null) {
+        $updates['status'] = 'open';
+        $updates['resolved_at'] = null;
+    }
+
+    $ticket->update($updates);
+
+    $freshTicket = $ticket->fresh();
+
+    if ($oldAssignedToId !== $freshTicket->assigned_to_id) {
+        $assignmentMessage = match (true) {
+            $freshTicket->assigned_to_id === null => 'Ticket assignment was cleared and returned to the queue.',
+            $freshTicket->assigned_to_id === $actor->id => 'Ticket was claimed by '.$actor->name.'.',
+            default => 'Ticket was assigned by '.$actor->name.'.',
+        };
+
+        $this->recordVisibleActivity($request, $freshTicket, 'assigned', $assignmentMessage);
+    }
+
+    AuditLog::record(
+        $actor,
+        'tickets',
+        'assignment_updated',
+        "{$actor->name} updated ticket {$freshTicket->ticket_number} assignment.",
+        $freshTicket,
+        [
+            'ticket_number' => $freshTicket->ticket_number,
+            'old_assigned_to_id' => $oldAssignedToId,
+            'new_assigned_to_id' => $freshTicket->assigned_to_id,
+        ],
+        $request
+    );
+
+    broadcast(new TicketChanged($freshTicket, 'assigned'))->toOthers();
+
+    return response()->json([
+        'data' => $freshTicket->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
+        'message' => 'Ticket assignment updated successfully.',
+    ]);
+}
 
     private function recordVisibleActivity(
         Request $request,
@@ -287,10 +324,39 @@ class TicketController extends Controller
         return $number;
     }
 
+    private function ensureAssignableStaff(User $staff, string $resourceLabel): void
+{
+    if ($staff->role !== 'staff') {
+        abort(422, "{$resourceLabel} can only be assigned to staff accounts.");
+    }
+
+    $isOnDuty = StaffShift::query()
+        ->where('user_id', $staff->id)
+        ->whereNull('ended_at')
+        ->exists();
+
+    if (! $isOnDuty) {
+        abort(422, "{$resourceLabel} can only be assigned to staff who are currently on duty.");
+    }
+}
+
     private function ensureStaffUser(Request $request): void
     {
-        if (! in_array($request->user()->role, ['staff', 'super_admin'], true)) {
+        $user = $request->user();
+
+        if (! in_array($user->role, ['staff', 'super_admin'], true)) {
             abort(403, 'Only staff or super admin users can perform this action.');
+        }
+
+        if ($user->role === 'staff') {
+            $isOnDuty = StaffShift::query()
+                ->where('user_id', $user->id)
+                ->whereNull('ended_at')
+                ->exists();
+
+            if (! $isOnDuty) {
+                abort(403, 'Start your shift before claiming tickets or updating their status.');
+            }
         }
     }
 }

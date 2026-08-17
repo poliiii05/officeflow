@@ -1,8 +1,9 @@
 import {
   BriefcaseBusiness,
   CalendarCheck,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
-  RefreshCw,
   Search,
   TicketCheck,
   UserRoundCheck,
@@ -13,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { getApiErrorMessage } from '@/features/auth/auth-api'
 import {
@@ -23,6 +25,8 @@ import { echo } from '@/lib/echo'
 import { cn } from '@/lib/utils'
 
 type StaffStatusFilter = 'all' | 'on_duty' | 'off_duty'
+
+const STAFF_PAGE_SIZE = 10
 
 const statusFilters: Array<{ value: StaffStatusFilter; label: string }> = [
   { value: 'all', label: 'All staff' },
@@ -74,14 +78,12 @@ export function StaffManagementPanel() {
   const [staffWorkload, setStaffWorkload] = useState<StaffWorkloadItem[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StaffStatusFilter>('all')
+  const [staffPage, setStaffPage] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState('')
 
   const loadStaff = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (silent) {
-      setIsRefreshing(true)
-    } else {
+    if (!silent) {
       setIsLoading(true)
     }
 
@@ -94,7 +96,6 @@ export function StaffManagementPanel() {
       setError(getApiErrorMessage(error, 'Unable to load staff workload.'))
     } finally {
       setIsLoading(false)
-      setIsRefreshing(false)
     }
   }, [])
 
@@ -143,6 +144,16 @@ export function StaffManagementPanel() {
       return matchesSearch && matchesStatus
     })
   }, [search, staffWorkload, statusFilter])
+
+  useEffect(() => {
+    setStaffPage(1)
+  }, [search, statusFilter])
+
+  const lastPage = Math.max(Math.ceil(filteredStaff.length / STAFF_PAGE_SIZE), 1)
+  const pagedStaff = filteredStaff.slice(
+    (staffPage - 1) * STAFF_PAGE_SIZE,
+    staffPage * STAFF_PAGE_SIZE
+  )
 
   const onDutyCount = staffWorkload.filter((staff) => staff.is_on_duty).length
   const offDutyCount = staffWorkload.length - onDutyCount
@@ -240,17 +251,6 @@ export function StaffManagementPanel() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-b bg-white px-5 py-3">
-          <p className="text-sm text-muted-foreground">
-            Showing {filteredStaff.length} of {staffWorkload.length} staff accounts
-          </p>
-
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <RefreshCw className={cn('size-3.5', isRefreshing && 'animate-spin')} />
-            Live sync
-          </div>
-        </div>
-
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] table-fixed">
             <colgroup>
@@ -278,8 +278,8 @@ export function StaffManagementPanel() {
                     Loading staff...
                   </td>
                 </tr>
-              ) : filteredStaff.length ? (
-                filteredStaff.map((staff) => <StaffRow key={staff.id} staff={staff} />)
+              ) : pagedStaff.length ? (
+                pagedStaff.map((staff) => <StaffRow key={staff.id} staff={staff} />)
               ) : (
                 <tr>
                   <td colSpan={5} className="px-5 py-12 text-center">
@@ -293,6 +293,37 @@ export function StaffManagementPanel() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="flex flex-col gap-3 border-t bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Page {staffPage} of {lastPage} - {filteredStaff.length} staff account
+            {filteredStaff.length === 1 ? '' : 's'}
+          </p>
+
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer gap-2 bg-white"
+              disabled={staffPage === 1}
+              onClick={() => setStaffPage((page) => Math.max(page - 1, 1))}
+            >
+              <ChevronLeft className="size-4" />
+              Previous
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer gap-2 bg-white"
+              disabled={staffPage === lastPage}
+              onClick={() => setStaffPage((page) => Math.min(page + 1, lastPage))}
+            >
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
         </div>
       </section>
     </section>

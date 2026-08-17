@@ -1,9 +1,9 @@
 import {
   CalendarCheck,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Clock3,
-  FileClock,
-  RefreshCw,
   Search,
   TicketCheck,
   type LucideIcon,
@@ -11,11 +11,9 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  getAppointments,
-  type Appointment,
-} from '@/features/appointments/appointment-api'
+import { getAppointments, type Appointment } from '@/features/appointments/appointment-api'
 import { AppointmentDetailsDialog } from '@/features/appointments/components/AppointmentDetailsDialog'
 import { getApiErrorMessage } from '@/features/auth/auth-api'
 import { getTickets, type Ticket } from '@/features/tickets/ticket-api'
@@ -32,33 +30,37 @@ type PaginationMeta = {
 
 type QueueFilter = 'all' | 'ticket' | 'appointment'
 
-type QueueItem =
-  | {
-      kind: 'ticket'
-      id: number
-      title: string
-      number: string
-      department: string
-      detail: string
-      requester: string
-      created_at: string
-      status: string
-      accentClassName: string
-      data: Ticket
-    }
-  | {
-      kind: 'appointment'
-      id: number
-      title: string
-      number: string
-      department: string
-      detail: string
-      requester: string
-      created_at: string
-      status: string
-      accentClassName: string
-      data: Appointment
-    }
+type TicketQueueItem = {
+  id: string
+  type: 'ticket'
+  title: string
+  number: string
+  office: string
+  service: string
+  requester: string
+  status: string
+  created_at: string
+  searchText: string
+  data: Ticket
+}
+
+type AppointmentQueueItem = {
+  id: string
+  type: 'appointment'
+  title: string
+  number: string
+  office: string
+  service: string
+  requester: string
+  status: string
+  created_at: string
+  searchText: string
+  data: Appointment
+}
+
+type QueueItem = TicketQueueItem | AppointmentQueueItem
+
+const QUEUE_PAGE_SIZE = 10
 
 const emptyMeta: PaginationMeta = {
   current_page: 1,
@@ -67,21 +69,21 @@ const emptyMeta: PaginationMeta = {
   total: 0,
 }
 
-const queueFilters: Array<{ value: QueueFilter; label: string }> = [
+const queueFilters: { value: QueueFilter; label: string }[] = [
   { value: 'all', label: 'All queue' },
   { value: 'ticket', label: 'Tickets' },
   { value: 'appointment', label: 'Appointments' },
 ]
 
 const statusStyles: Record<string, string> = {
-  open: 'bg-sky-100 text-sky-700',
-  pending: 'bg-amber-100 text-amber-700',
-  in_progress: 'bg-amber-100 text-amber-700',
-  scheduled: 'bg-sky-100 text-sky-700',
-  resolved: 'bg-emerald-100 text-emerald-700',
-  completed: 'bg-emerald-100 text-emerald-700',
-  closed: 'bg-slate-200 text-slate-700',
-  cancelled: 'bg-slate-200 text-slate-700',
+  open: 'bg-sky-500/15 text-sky-700',
+  in_progress: 'bg-amber-500/15 text-amber-700',
+  resolved: 'bg-emerald-500/15 text-emerald-700',
+  closed: 'bg-slate-500/15 text-slate-700',
+  pending: 'bg-amber-500/15 text-amber-700',
+  scheduled: 'bg-sky-500/15 text-sky-700',
+  completed: 'bg-emerald-500/15 text-emerald-700',
+  cancelled: 'bg-slate-500/15 text-slate-700',
 }
 
 function formatStatus(status: string) {
@@ -89,17 +91,14 @@ function formatStatus(status: string) {
 }
 
 function formatWaitingTime(value: string) {
-  const diffMs = Math.max(Date.now() - new Date(value).getTime(), 0)
-  const minutes = Math.floor(diffMs / 60000)
+  const createdAt = new Date(value).getTime()
+  const diffMs = Date.now() - createdAt
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000))
 
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m`
+  if (diffMinutes < 60) return `${diffMinutes}m`
+  if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}h`
 
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ${minutes % 60}m`
-
-  const days = Math.floor(hours / 24)
-  return `${days}d ${hours % 24}h`
+  return `${Math.floor(diffMinutes / 1440)}d`
 }
 
 export function QueueMonitorPanel() {
@@ -109,19 +108,11 @@ export function QueueMonitorPanel() {
   const [appointmentMeta, setAppointmentMeta] = useState<PaginationMeta>(emptyMeta)
   const [search, setSearch] = useState('')
   const [queueFilter, setQueueFilter] = useState<QueueFilter>('all')
+  const [queuePage, setQueuePage] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState('')
 
-  const loadQueue = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (silent) {
-      setIsRefreshing(true)
-    } else {
-      setIsLoading(true)
-    }
-
-    setError('')
-
+  const loadQueue = useCallback(async () => {
     try {
       const [ticketResponse, appointmentResponse] = await Promise.all([
         getTickets({ queue: 'unassigned', per_page: 50 }),
@@ -132,11 +123,11 @@ export function QueueMonitorPanel() {
       setTicketMeta(ticketResponse.meta)
       setAppointments(appointmentResponse.data)
       setAppointmentMeta(appointmentResponse.meta)
-    } catch (error) {
-      setError(getApiErrorMessage(error, 'Unable to load service queue.'))
+      setError('')
+    } catch (caughtError) {
+      setError(getApiErrorMessage(caughtError, 'Unable to load queue monitor.'))
     } finally {
       setIsLoading(false)
-      setIsRefreshing(false)
     }
   }, [])
 
@@ -147,46 +138,70 @@ export function QueueMonitorPanel() {
   useEffect(() => {
     const channel = echo.channel('officeflow.staff')
 
-    const refreshSoon = () => {
-      window.setTimeout(() => void loadQueue({ silent: true }), 150)
-    }
+    channel.listen('.ticket.changed', () => {
+      void loadQueue()
+    })
 
-    channel.listen('.ticket.changed', refreshSoon)
-    channel.listen('.appointment.changed', refreshSoon)
+    channel.listen('.appointment.changed', () => {
+      void loadQueue()
+    })
 
     return () => {
       channel.stopListening('.ticket.changed')
       channel.stopListening('.appointment.changed')
-      echo.leaveChannel('officeflow.staff')
+      echo.leave('officeflow.staff')
     }
   }, [loadQueue])
 
+  useEffect(() => {
+    setQueuePage(1)
+  }, [queueFilter, search])
+
   const queueItems = useMemo<QueueItem[]>(() => {
     const ticketItems: QueueItem[] = tickets.map((ticket) => ({
-      kind: 'ticket',
-      id: ticket.id,
+      id: `ticket-${ticket.id}`,
+      type: 'ticket',
       title: ticket.subject,
       number: ticket.ticket_number,
-      department: ticket.department,
-      detail: ticket.category,
-      requester: ticket.requester?.name ?? 'Unknown requester',
-      created_at: ticket.created_at,
+      office: ticket.department,
+      service: ticket.category,
+      requester: ticket.requester?.name ?? 'Requester',
       status: ticket.status,
-      accentClassName: 'bg-sky-100 text-sky-700',
+      created_at: ticket.created_at,
+      searchText: [
+        ticket.subject,
+        ticket.ticket_number,
+        ticket.department,
+        ticket.category,
+        ticket.requester?.name,
+        ticket.requester?.email,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase(),
       data: ticket,
     }))
 
     const appointmentItems: QueueItem[] = appointments.map((appointment) => ({
-      kind: 'appointment',
-      id: appointment.id,
+      id: `appointment-${appointment.id}`,
+      type: 'appointment',
       title: appointment.purpose,
       number: appointment.appointment_number,
-      department: appointment.department,
-      detail: new Date(appointment.scheduled_at).toLocaleString(),
-      requester: appointment.requester?.name ?? 'Unknown requester',
-      created_at: appointment.created_at,
+      office: appointment.department,
+      service: 'Appointment',
+      requester: appointment.requester?.name ?? 'Requester',
       status: appointment.status,
-      accentClassName: 'bg-emerald-100 text-emerald-700',
+      created_at: appointment.created_at,
+      searchText: [
+        appointment.purpose,
+        appointment.appointment_number,
+        appointment.department,
+        appointment.requester?.name,
+        appointment.requester?.email,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase(),
       data: appointment,
     }))
 
@@ -199,170 +214,159 @@ export function QueueMonitorPanel() {
     const normalizedSearch = search.trim().toLowerCase()
 
     return queueItems.filter((item) => {
-      const matchesFilter = queueFilter === 'all' || item.kind === queueFilter
-      const matchesSearch =
-        !normalizedSearch ||
-        [
-          item.title,
-          item.number,
-          item.department,
-          item.detail,
-          item.requester,
-          item.kind,
-          item.status,
-        ]
-          .join(' ')
-          .toLowerCase()
-          .includes(normalizedSearch)
+      const matchesType = queueFilter === 'all' || item.type === queueFilter
+      const matchesSearch = normalizedSearch ? item.searchText.includes(normalizedSearch) : true
 
-      return matchesFilter && matchesSearch
+      return matchesType && matchesSearch
     })
   }, [queueFilter, queueItems, search])
 
+  const queueLastPage = Math.max(1, Math.ceil(filteredItems.length / QUEUE_PAGE_SIZE))
+  const pagedItems = filteredItems.slice(
+    (queuePage - 1) * QUEUE_PAGE_SIZE,
+    queuePage * QUEUE_PAGE_SIZE
+  )
+
   const queueTotal = ticketMeta.total + appointmentMeta.total
-  const oldestWaiting = queueItems[0] ? formatWaitingTime(queueItems[0].created_at) : 'Clear'
+  const oldestWaiting = queueItems[0]?.created_at
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 xl:grid-cols-4">
         <SummaryCard
-          label="Queue waiting"
+          title="Queue waiting"
           value={queueTotal}
           description={`${ticketMeta.total} tickets, ${appointmentMeta.total} appointments`}
           icon={ClipboardList}
-          className="border-violet-200 bg-violet-50/70 text-violet-700"
+          accent="violet"
         />
-
         <SummaryCard
-          label="Tickets waiting"
+          title="Tickets waiting"
           value={ticketMeta.total}
           description="Unassigned ticket requests"
           icon={TicketCheck}
-          className="border-sky-200 bg-sky-50/70 text-sky-700"
+          accent="sky"
         />
-
         <SummaryCard
-          label="Appointments waiting"
+          title="Appointments waiting"
           value={appointmentMeta.total}
           description="Pending appointment requests"
           icon={CalendarCheck}
-          className="border-emerald-200 bg-emerald-50/70 text-emerald-700"
+          accent="emerald"
         />
-
         <SummaryCard
-          label="Oldest waiting"
-          value={oldestWaiting}
-          description="Longest request in queue"
+          title="Oldest waiting"
+          value={oldestWaiting ? formatWaitingTime(oldestWaiting) : 'Clear'}
+          description={oldestWaiting ? 'Longest unclaimed request' : 'No waiting requests'}
           icon={Clock3}
-          className="border-amber-200 bg-amber-50/70 text-amber-700"
+          accent="amber"
         />
-      </section>
+      </div>
 
-      <section className="overflow-hidden rounded-lg border border-violet-200 bg-white shadow-sm">
-        <div className="grid gap-4 border-b bg-violet-50/70 px-5 py-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold">Waiting for staff</h2>
-              <Badge className="border-0 bg-violet-100 text-violet-700">
-                {filteredItems.length}
-              </Badge>
+      <section className="overflow-hidden rounded-lg border border-violet-100 bg-white shadow-sm">
+        <div className="border-b bg-violet-50/60 px-5 py-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold">Waiting for staff</h2>
+                <Badge className="border-0 bg-violet-100 text-violet-700">
+                  {filteredItems.length}
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Combined list of unclaimed tickets and pending appointments.
+              </p>
             </div>
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              Combined view of unclaimed tickets and appointment requests.
-            </p>
-          </div>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="flex flex-wrap gap-2">
+                {queueFilters.map((filter) => (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    onClick={() => setQueueFilter(filter.value)}
+                    className={cn(
+                      'h-10 cursor-pointer rounded-lg border px-4 text-sm font-medium transition-colors',
+                      queueFilter === filter.value
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    )}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
 
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-            <div className="flex flex-wrap gap-2">
-              {queueFilters.map((filter) => (
-                <button
-                  key={filter.value}
-                  type="button"
-                  onClick={() => setQueueFilter(filter.value)}
-                  className={cn(
-                    'cursor-pointer rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
-                    queueFilter === filter.value
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-input bg-white text-muted-foreground hover:bg-slate-50 hover:text-foreground'
-                  )}
-                >
-                  {filter.label}
-                </button>
-              ))}
+              <div className="relative min-w-0 lg:w-96">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search number, requester, department..."
+                  className="pl-9"
+                />
+              </div>
             </div>
-
-            <div className="relative w-full xl:w-80">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search queue..."
-                className="bg-white pl-9"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between border-b bg-white px-5 py-3">
-          <p className="text-sm text-muted-foreground">
-            Showing {filteredItems.length} of {queueItems.length} waiting requests
-          </p>
-
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <RefreshCw className={cn('size-3.5', isRefreshing && 'animate-spin')} />
-            Live sync
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1050px] table-fixed">
-            <colgroup>
-              <col className="w-[42%]" />
-              <col className="w-[14%]" />
-              <col className="w-[20%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-            </colgroup>
+          <div className="min-w-[1120px]">
+            <div className="grid grid-cols-[34%_14%_14%_14%_24%] border-b bg-slate-50 px-5 py-3 text-xs font-semibold uppercase text-muted-foreground">
+              <span>Request</span>
+              <span>Type</span>
+              <span>Status</span>
+              <span>Waiting</span>
+              <span>Details</span>
+            </div>
 
-            <thead className="border-b bg-slate-50 text-xs font-semibold uppercase text-muted-foreground">
-              <tr>
-                <th className="px-5 py-3 text-left">Request</th>
-                <th className="px-5 py-3 text-center">Type</th>
-                <th className="px-5 py-3 text-center">Status</th>
-                <th className="px-5 py-3 text-center">Waiting</th>
-                <th className="px-5 py-3 text-center">Details</th>
-              </tr>
-            </thead>
+            {isLoading ? (
+              <div className="px-5 py-10 text-sm text-muted-foreground">Loading queue...</div>
+            ) : pagedItems.length ? (
+              pagedItems.map((item) => <QueueItemRow key={item.id} item={item} />)
+            ) : (
+              <div className="px-5 py-10 text-sm text-muted-foreground">
+                No waiting requests match this view.
+              </div>
+            )}
+          </div>
+        </div>
 
-            <tbody>
-              {isLoading ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-8 text-sm text-muted-foreground">
-                    Loading queue...
-                  </td>
-                </tr>
-              ) : filteredItems.length ? (
-                filteredItems.map((item) => <QueueItemRow key={`${item.kind}-${item.id}`} item={item} />)
-              ) : (
-                <tr>
-                  <td colSpan={5} className="px-5 py-12 text-center">
-                    <FileClock className="mx-auto size-9 text-muted-foreground" />
-                    <h3 className="mt-3 font-semibold">Queue is clear</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      New tickets and appointment requests will appear here.
-                    </p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-3 border-t bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Page {queuePage} of {queueLastPage} - {filteredItems.length} waiting{' '}
+            {filteredItems.length === 1 ? 'request' : 'requests'}
+          </p>
+
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer"
+              disabled={queuePage <= 1}
+              onClick={() => setQueuePage((page) => Math.max(page - 1, 1))}
+            >
+              <ChevronLeft className="size-4" />
+              Previous
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer"
+              disabled={queuePage >= queueLastPage}
+              onClick={() => setQueuePage((page) => Math.min(page + 1, queueLastPage))}
+            >
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
         </div>
       </section>
     </div>
@@ -370,94 +374,83 @@ export function QueueMonitorPanel() {
 }
 
 function QueueItemRow({ item }: { item: QueueItem }) {
-  const Icon = item.kind === 'ticket' ? TicketCheck : CalendarCheck
+  const Icon = item.type === 'ticket' ? TicketCheck : CalendarCheck
+  const itemColor =
+    item.type === 'ticket'
+      ? 'bg-sky-100 text-sky-700'
+      : 'bg-emerald-100 text-emerald-700'
 
   return (
-    <tr className="border-b last:border-b-0 hover:bg-slate-50">
-      <td className="px-5 py-5 align-middle">
-        <div className="flex min-w-0 gap-3">
-          <div
-            className={cn(
-              'flex size-11 shrink-0 items-center justify-center rounded-lg',
-              item.accentClassName
-            )}
-          >
-            <Icon className="size-5" />
-          </div>
-
-          <div className="min-w-0">
-            <p className="truncate font-semibold">{item.title}</p>
-            <p className="mt-1 truncate text-sm text-muted-foreground">
-              {item.number} - {item.department} - {item.detail}
-            </p>
-            <p className="mt-1 truncate text-sm text-muted-foreground">
-              Requester: <span className="font-medium text-foreground">{item.requester}</span>
-            </p>
-          </div>
+    <div className="grid grid-cols-[34%_14%_14%_14%_24%] items-center border-b px-5 py-4 last:border-b-0">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className={cn('flex size-11 shrink-0 items-center justify-center rounded-lg', itemColor)}>
+          <Icon className="size-4" />
         </div>
-      </td>
 
-      <td className="px-5 py-5 text-center align-middle">
-        <Badge
-          variant="outline"
-          className={cn('inline-flex h-8 w-28 justify-center capitalize', item.accentClassName)}
-        >
-          {item.kind}
+        <div className="min-w-0">
+          <p className="truncate font-semibold">{item.title}</p>
+          <p className="truncate text-sm text-muted-foreground">{item.number}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {item.office} - {item.service}
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <Badge variant="outline" className="capitalize">
+          {item.type}
         </Badge>
-      </td>
+      </div>
 
-      <td className="px-5 py-5 text-center align-middle">
-        <Badge
-          variant="secondary"
-          className={cn(
-            'inline-flex h-8 w-32 justify-center border-0 capitalize',
-            statusStyles[item.status] ?? 'bg-slate-100 text-slate-700'
-          )}
-        >
+      <div>
+        <Badge className={cn('border-0 capitalize', statusStyles[item.status] ?? '')}>
           {formatStatus(item.status)}
         </Badge>
-      </td>
+      </div>
 
-      <td className="px-5 py-5 text-center align-middle">
-        <Badge variant="secondary" className="inline-flex h-8 w-24 justify-center border-0 bg-amber-100 text-amber-700">
-          {formatWaitingTime(item.created_at)}
-        </Badge>
-      </td>
+      <div className="text-sm text-muted-foreground">{formatWaitingTime(item.created_at)}</div>
 
-      <td className="px-5 py-5 text-center align-middle">
-        {item.kind === 'ticket' ? (
+      <div className="flex justify-start [&_button]:min-w-[132px] [&_button]:whitespace-nowrap">
+        {item.type === 'ticket' ? (
           <TicketDetailsDialog ticket={item.data} mode="readonly" />
         ) : (
           <AppointmentDetailsDialog appointment={item.data} mode="readonly" />
         )}
-      </td>
-    </tr>
+      </div>
+    </div>
   )
 }
 
 function SummaryCard({
-  label,
+  title,
   value,
   description,
   icon: Icon,
-  className,
+  accent,
 }: {
-  label: string
-  value: string | number
+  title: string
+  value: number | string
   description: string
   icon: LucideIcon
-  className?: string
+  accent: 'violet' | 'sky' | 'emerald' | 'amber'
 }) {
+  const accentStyles = {
+    violet: 'border-violet-200 bg-violet-50/70 text-violet-700',
+    sky: 'border-sky-200 bg-sky-50/70 text-sky-700',
+    emerald: 'border-emerald-200 bg-emerald-50/70 text-emerald-700',
+    amber: 'border-amber-200 bg-amber-50/70 text-amber-700',
+  }
+
   return (
-    <article className={cn('rounded-lg border p-5 shadow-sm', className)}>
+    <article className={cn('rounded-lg border p-5 shadow-sm', accentStyles[accent])}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-medium text-slate-700">{label}</p>
-          <p className="mt-6 text-3xl font-semibold text-slate-950">{value}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          <p className="font-medium text-slate-700">{title}</p>
+          <p className="mt-7 text-3xl font-semibold text-slate-950">{value}</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
         </div>
 
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-white/70">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-white/70">
           <Icon className="size-5" />
         </div>
       </div>

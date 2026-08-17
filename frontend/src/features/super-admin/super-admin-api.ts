@@ -70,7 +70,10 @@ export type ManagedUsersParams = {
 }
 
 export async function getManagedUsers(params: ManagedUsersParams = {}) {
-  const response = await api.get<ManagedUsersResponse>('/super-admin/users', { params })
+  const response = await api.get<ManagedUsersResponse>('/super-admin/users', {
+    params,
+  })
+
   return response.data
 }
 
@@ -81,6 +84,23 @@ export async function updateManagedUserRole(userId: number, role: ManagedUserRol
   )
 
   return response.data
+}
+
+export type AssignableStaff = {
+  id: number
+  name: string
+  email: string
+  active_tickets: number
+  active_appointments: number
+  active_total: number
+}
+
+export async function getAssignableStaff() {
+  const response = await api.get<{ data: AssignableStaff[] }>(
+    '/super-admin/assignable-staff'
+  )
+
+  return response.data.data
 }
 
 export type AnalyticsTrendItem = {
@@ -124,9 +144,12 @@ export type SuperAdminAnalytics = {
 }
 
 export async function getSuperAdminAnalytics(days = 7) {
-  const response = await api.get<{ data: SuperAdminAnalytics }>('/super-admin/analytics', {
-    params: { days },
-  })
+  const response = await api.get<{ data: SuperAdminAnalytics }>(
+    '/super-admin/analytics',
+    {
+      params: { days },
+    }
+  )
 
   return response.data.data
 }

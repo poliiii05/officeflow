@@ -138,7 +138,10 @@
             Route::get('/super-admin/users', [SuperAdminUserController::class, 'index'])
             ->middleware('throttle:180,1');
 
-              Route::patch('/super-admin/users/{user}/role', [SuperAdminUserController::class, 'updateRole'])
+            Route::get('/super-admin/assignable-staff', [SuperAdminUserController::class, 'assignableStaff'])
+            ->middleware('throttle:180,1');
+
+            Route::patch('/super-admin/users/{user}/role', [SuperAdminUserController::class, 'updateRole'])
             ->middleware('throttle:60,1');
 
             Route::get('/super-admin/audit-logs', [AuditLogController::class, 'index'])
@@ -163,7 +166,7 @@
             ->middleware('throttle:30,1');
 
             Route::get('/staff/shifts', [StaffShiftController::class, 'index'])
-            ->middleware('throttle:180,1');
+                ->middleware('throttle:180,1');
             
         });
     });

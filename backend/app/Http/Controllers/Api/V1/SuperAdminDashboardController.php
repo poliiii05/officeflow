@@ -19,10 +19,9 @@ class SuperAdminDashboardController extends Controller
         $today = now()->toDateString();
 
         $staff = User::query()
-            ->whereIn('role', ['staff', 'super_admin'])
-            ->with(['notifications' => fn ($query) => $query->latest()->limit(1)])
+            ->where('role', 'staff')
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role', 'created_at']);
+            ->get(['id', 'name', 'email', 'role']);
 
         $activeShifts = StaffShift::query()
             ->whereNull('ended_at')
@@ -47,7 +46,7 @@ class SuperAdminDashboardController extends Controller
                 'id' => $staffUser->id,
                 'name' => $staffUser->name,
                 'email' => $staffUser->email,
-                'role' => $staffUser->role,
+                'role' => 'staff',
                 'is_on_duty' => (bool) $shift,
                 'shift_started_at' => $shift?->started_at,
                 'active_tickets' => $activeTickets,

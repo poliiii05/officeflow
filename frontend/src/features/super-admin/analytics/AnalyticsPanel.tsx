@@ -10,13 +10,7 @@ import {
   Tooltip,
   type ChartOptions,
 } from 'chart.js'
-import {
-  BarChart3,
-  CalendarCheck,
-  RefreshCw,
-  TicketCheck,
-  type LucideIcon,
-} from 'lucide-react'
+import { BarChart3, CalendarCheck, TicketCheck, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Doughnut, Line } from 'react-chartjs-2'
 
@@ -37,25 +31,32 @@ ChartJS.register(
   Tooltip
 )
 
-const dayOptions = [7, 14, 30] as const
+const rangeOptions = [
+  { value: 7, label: '7 days' },
+  { value: 14, label: '14 days' },
+  { value: 30, label: '30 days' },
+  { value: 365, label: '12 months' },
+] as const
+
+type AnalyticsRange = (typeof rangeOptions)[number]['value']
 
 export function AnalyticsPanel() {
   const [analytics, setAnalytics] = useState<SuperAdminAnalytics | null>(null)
-  const [days, setDays] = useState<(typeof dayOptions)[number]>(7)
+  const [range, setRange] = useState<AnalyticsRange>(7)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
   const loadAnalytics = useCallback(async () => {
     try {
       setError('')
-      const data = await getSuperAdminAnalytics(days)
+      const data = await getSuperAdminAnalytics(range)
       setAnalytics(data)
     } catch {
       setError('Unable to load analytics.')
     } finally {
       setIsLoading(false)
     }
-  }, [days])
+  }, [range])
 
   useEffect(() => {
     setIsLoading(true)
@@ -131,9 +132,34 @@ export function AnalyticsPanel() {
     [analytics]
   )
 
+  // Chart.js happily renders an axis with nothing on it, which looks like a
+  // broken/empty chart rather than "no data yet". These flags let us swap in
+  // an explicit empty state instead.
+  const hasTrendData = useMemo(
+    () =>
+      (analytics?.trends ?? []).some(
+        (item) => item.tickets > 0 || item.appointments > 0 || item.completed > 0
+      ),
+    [analytics]
+  )
+
+  const hasTicketStatusData = useMemo(
+    () => (analytics?.ticket_statuses ?? []).some((item) => item.count > 0),
+    [analytics]
+  )
+
+  const hasAppointmentStatusData = useMemo(
+    () => (analytics?.appointment_statuses ?? []).some((item) => item.count > 0),
+    [analytics]
+  )
+
   const lineOptions: ChartOptions<'line'> = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: {
+      intersect: false,
+      mode: 'index',
+    },
     plugins: {
       legend: {
         position: 'bottom',
@@ -144,7 +170,13 @@ export function AnalyticsPanel() {
       },
     },
     scales: {
-      x: { grid: { display: false } },
+      x: {
+        grid: { display: false },
+        ticks: {
+          autoSkip: true,
+          maxTicksLimit: range === 365 ? 12 : 10,
+        },
+      },
       y: {
         beginAtZero: true,
         ticks: { precision: 0 },
@@ -176,7 +208,7 @@ export function AnalyticsPanel() {
         </div>
       ) : null}
 
-      <section className="rounded-lg border bg-white shadow-sm">
+      <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
         <div className="flex flex-col justify-between gap-3 border-b px-5 py-4 lg:flex-row lg:items-start">
           <div className="flex items-start gap-3">
             <IconBox icon={BarChart3} tone="sky" />
@@ -190,30 +222,21 @@ export function AnalyticsPanel() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {dayOptions.map((option) => (
+            {rangeOptions.map((option) => (
               <button
-                key={option}
+                key={option.value}
                 type="button"
-                onClick={() => setDays(option)}
+                onClick={() => setRange(option.value)}
                 className={cn(
-                  'h-8 rounded-md border px-3 text-xs font-medium transition-colors',
-                  days === option
+                  'h-8 cursor-pointer rounded-md border px-3 text-xs font-medium transition-colors',
+                  range === option.value
                     ? 'border-sky-300 bg-sky-50 text-sky-700'
                     : 'border-slate-200 bg-white text-muted-foreground hover:bg-slate-50'
                 )}
               >
-                {option} days
+                {option.label}
               </button>
             ))}
-
-            <button
-              type="button"
-              onClick={() => void loadAnalytics()}
-              className="inline-flex h-8 items-center gap-2 rounded-md border bg-white px-3 text-xs font-medium text-muted-foreground shadow-xs hover:bg-slate-50"
-            >
-              <RefreshCw className={cn('size-3.5', isLoading && 'animate-spin')} />
-              Sync
-            </button>
           </div>
         </div>
 
@@ -226,8 +249,25 @@ export function AnalyticsPanel() {
               </p>
             </div>
 
-            <div className="h-72">
-              <Line data={serviceTrendData} options={lineOptions} />
+            <div className="relative h-72">
+              {isLoading && !analytics ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  Loading analytics...
+                </div>
+              ) : (
+                <>
+                  <Line data={serviceTrendData} options={lineOptions} />
+                  {hasTrendData ? null : (
+                    <EmptyChartOverlay
+                      icon={BarChart3}
+                      message={`No records yet for the last ${
+                        rangeOptions.find((option) => option.value === range)?.label ??
+                        'selected range'
+                      }.`}
+                    />
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -238,8 +278,11 @@ export function AnalyticsPanel() {
               description="Ticket records by current status."
               tone="sky"
             >
-              <div className="h-32">
+              <div className="relative h-32">
                 <Doughnut data={ticketStatusData} options={doughnutOptions} />
+                {hasTicketStatusData ? null : (
+                  <EmptyChartOverlay icon={TicketCheck} message="No ticket records yet." compact />
+                )}
               </div>
             </MiniChartCard>
 
@@ -249,19 +292,37 @@ export function AnalyticsPanel() {
               description="Appointment records by current status."
               tone="emerald"
             >
-              <div className="h-32">
+              <div className="relative h-32">
                 <Doughnut data={appointmentStatusData} options={doughnutOptions} />
+                {hasAppointmentStatusData ? null : (
+                  <EmptyChartOverlay
+                    icon={CalendarCheck}
+                    message="No appointment records yet."
+                    compact
+                  />
+                )}
               </div>
             </MiniChartCard>
           </div>
         </div>
       </section>
+    </div>
+  )
+}
 
-      {isLoading && !analytics ? (
-        <div className="rounded-lg border bg-white px-4 py-6 text-center text-sm text-muted-foreground shadow-sm">
-          Loading analytics...
-        </div>
-      ) : null}
+function EmptyChartOverlay({
+  icon: Icon,
+  message,
+  compact = false,
+}: {
+  icon: LucideIcon
+  message: string
+  compact?: boolean
+}) {
+  return (
+    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/70 px-4 text-center">
+      <Icon className={cn('text-slate-300', compact ? 'size-6' : 'size-8')} />
+      <p className={cn('text-muted-foreground', compact ? 'text-xs' : 'text-sm')}>{message}</p>
     </div>
   )
 }

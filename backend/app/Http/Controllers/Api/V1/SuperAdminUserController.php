@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Appointment;
 use App\Models\AuditLog;
+use App\Models\StaffShift;
+use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -55,6 +58,51 @@ class SuperAdminUserController extends Controller
                 'per_page' => $users->perPage(),
                 'total' => $users->total(),
             ],
+        ]);
+    }
+
+    public function assignableStaff(Request $request): JsonResponse
+    {
+        $this->ensureSuperAdmin($request);
+
+        $activeStaffIds = StaffShift::query()
+            ->whereNull('ended_at')
+            ->pluck('user_id');
+
+        $staff = User::query()
+            ->where('role', 'staff')
+            ->whereIn('id', $activeStaffIds)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        $ticketCounts = Ticket::query()
+            ->whereIn('assigned_to_id', $staff->pluck('id'))
+            ->whereIn('status', ['open', 'in_progress'])
+            ->selectRaw('assigned_to_id, count(*) as total')
+            ->groupBy('assigned_to_id')
+            ->pluck('total', 'assigned_to_id');
+
+        $appointmentCounts = Appointment::query()
+            ->whereIn('assigned_to_id', $staff->pluck('id'))
+            ->whereIn('status', ['pending', 'scheduled'])
+            ->selectRaw('assigned_to_id, count(*) as total')
+            ->groupBy('assigned_to_id')
+            ->pluck('total', 'assigned_to_id');
+
+        return response()->json([
+            'data' => $staff->map(function (User $staffUser) use ($ticketCounts, $appointmentCounts) {
+                $activeTickets = (int) $ticketCounts->get($staffUser->id, 0);
+                $activeAppointments = (int) $appointmentCounts->get($staffUser->id, 0);
+
+                return [
+                    'id' => $staffUser->id,
+                    'name' => $staffUser->name,
+                    'email' => $staffUser->email,
+                    'active_tickets' => $activeTickets,
+                    'active_appointments' => $activeAppointments,
+                    'active_total' => $activeTickets + $activeAppointments,
+                ];
+            })->values(),
         ]);
     }
 

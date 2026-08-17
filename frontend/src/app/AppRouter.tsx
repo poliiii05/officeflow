@@ -29,6 +29,8 @@ import { UserDashboardPage } from '@/pages/user/UserDashboardPage'
 import { UserNotificationsPage } from '@/pages/user/UserNotificationsPage'
 import { UserSettingsPage } from '@/pages/user/UserSettingsPage'
 import { UserTicketsPage } from '@/pages/user/UserTicketsPage'
+import { SuperAdminAppointmentsPage } from '@/pages/super-admin/SuperAdminAppointmentsPage'
+import { SuperAdminTicketsPage } from '@/pages/super-admin/SuperAdminTicketsPage'
 
 const router = createBrowserRouter([
   {
@@ -78,6 +80,8 @@ const router = createBrowserRouter([
               { path: '/super-admin/analytics', element: <SuperAdminAnalyticsPage /> },
               { path: '/super-admin/settings', element: <SuperAdminSettingsPage /> },
               { path: '/super-admin/account-settings', element: <SuperAdminAccountSettingsPage /> },
+              {path: '/super-admin/tickets',element: <SuperAdminTicketsPage />,},
+              {path: '/super-admin/appointments',element: <SuperAdminAppointmentsPage />,},
             ],
           },
         ],

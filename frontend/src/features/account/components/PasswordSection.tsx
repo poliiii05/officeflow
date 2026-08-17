@@ -139,7 +139,9 @@ export function PasswordSection({
           </p>
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-3">
+        {/* sm:grid-cols-2 gives a real middle step before lg:grid-cols-3 -
+            without it this jumped straight from one column to three. */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <PasswordInput
             id="current-password"
             label="Current password"

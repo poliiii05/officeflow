@@ -75,17 +75,23 @@ function getNavItems(user: AuthUser | null): NavItem[] {
   if (!user) return []
 
   if (user.role === 'super_admin') {
-    return [
-      { label: 'Overview', to: '/super-admin/dashboard', icon: LayoutDashboard },
-      { label: 'Users', to: '/super-admin/users', icon: UserCog },
-      { label: 'Staff', to: '/super-admin/staff', icon: Users },
-      { label: 'Queue Monitor', to: '/super-admin/queue', icon: ClipboardList },
-      { label: 'Audit Logs', to: '/super-admin/audit-logs', icon: History },
-      { label: 'Analytics', to: '/super-admin/analytics', icon: BarChart3 },
-      { label: 'System Settings', to: '/super-admin/settings', icon: Settings },
-      { label: 'Account Settings', to: '/super-admin/account-settings', icon: UserCog },
-    ]
-  }
+  return [
+    { label: 'Dashboard', to: '/super-admin/dashboard', icon: LayoutDashboard },
+    { label: 'Tickets', to: '/super-admin/tickets', icon: TicketCheck },
+    { label: 'Appointments', to: '/super-admin/appointments', icon: CalendarCheck },
+    { label: 'Queue Monitor', to: '/super-admin/queue', icon: ClipboardList },
+    { label: 'Users', to: '/super-admin/users', icon: UserCog },
+    { label: 'Staff', to: '/super-admin/staff', icon: Users },
+    { label: 'Reports', to: '/super-admin/analytics', icon: BarChart3 },
+    { label: 'Audit Logs', to: '/super-admin/audit-logs', icon: History },
+    { label: 'System Settings', to: '/super-admin/settings', icon: Settings },
+    {
+      label: 'Account Settings',
+      to: '/super-admin/account-settings',
+      icon: UserCog,
+    },
+  ]
+}
 
   if (user.role === 'staff') {
     return [
@@ -126,10 +132,10 @@ export function DashboardLayout({
   const accountName = getDisplayName(user)
   const roleLabel = getRoleBadge(user)
 
-  const shouldShowStaffOnboarding = useMemo(() => {
-    staffOnboardingVersion
-    return user !== null && !isStaffOnboardingDone(user)
-  }, [staffOnboardingVersion, user])
+ const shouldShowStaffOnboarding = useMemo(() => {
+  staffOnboardingVersion
+  return user?.role === 'staff' && !isStaffOnboardingDone(user)
+}, [staffOnboardingVersion, user])
 
   useEffect(() => {
     function handleUserUpdated(event: Event) {
@@ -290,7 +296,7 @@ export function DashboardLayout({
         <RequesterOnboardingDialog user={user} open onCompleted={setUser} />
       ) : null}
 
-      {shouldShowStaffOnboarding && user ? (
+      {user?.role === 'staff' && shouldShowStaffOnboarding ? (
         <StaffOnboardingDialog
           user={user}
           open

@@ -13,6 +13,8 @@ use App\Notifications\AppointmentReplyNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Models\User;
+use App\Models\StaffShift;
 
 class AppointmentController extends Controller
 {
@@ -25,6 +27,8 @@ class AppointmentController extends Controller
             'search' => ['nullable', 'string', 'max:100'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ]);
 
         $user = $request->user();
@@ -44,6 +48,8 @@ class AppointmentController extends Controller
             })
             ->when($validated['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($validated['department'] ?? null, fn ($query, $department) => $query->where('department', $department))
+            ->when($validated['date_from'] ?? null,fn ($query, $date) => $query->whereDate('created_at', '>=', $date))
+            ->when( $validated['date_to'] ?? null,fn ($query, $date) => $query->whereDate('created_at', '<=', $date))
             ->when($validated['search'] ?? null, function ($query, $search) {
                 $query->where(function ($innerQuery) use ($search) {
                     $innerQuery
@@ -124,118 +130,174 @@ class AppointmentController extends Controller
     }
 
     public function updateStatus(Request $request, Appointment $appointment): JsonResponse
-    {
-        $this->ensureStaffUser($request);
+{
+    $this->ensureStaffUser($request);
 
-        $validated = $request->validate([
-            'status' => ['required', 'in:pending,scheduled,completed,cancelled'],
-        ]);
+    $user = $request->user();
 
-        $oldStatus = $appointment->status;
-        $oldAssignedToId = $appointment->assigned_to_id;
-
-        $updates = [
-            'status' => $validated['status'],
-            'cancelled_at' => $validated['status'] === 'cancelled' ? now() : null,
-        ];
-
-        if (
-            in_array($validated['status'], ['scheduled', 'completed'], true) &&
-            $appointment->assigned_to_id === null
-        ) {
-            $updates['assigned_to_id'] = $request->user()->id;
-        }
-
-        $appointment->update($updates);
-
-        $freshAppointment = $appointment->fresh();
-
-        $this->recordVisibleActivity(
-            $request,
-            $freshAppointment,
-            'status_update',
-            'Appointment status changed to '.$validated['status'].'.'
-        );
-
-        AuditLog::record(
-            $request->user(),
-            'appointments',
-            'status_updated',
-            "{$request->user()->name} changed appointment {$freshAppointment->appointment_number} from {$oldStatus} to {$freshAppointment->status}.",
-            $freshAppointment,
-            [
-                'appointment_number' => $freshAppointment->appointment_number,
-                'old_status' => $oldStatus,
-                'new_status' => $freshAppointment->status,
-                'old_assigned_to_id' => $oldAssignedToId,
-                'new_assigned_to_id' => $freshAppointment->assigned_to_id,
-            ],
-            $request
-        );
-
-        broadcast(new AppointmentChanged($freshAppointment, 'status_updated'))->toOthers();
-
-        return response()->json([
-            'data' => $freshAppointment->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
-            'message' => 'Appointment status updated successfully.',
-        ]);
+    if ($user->role === 'staff' && $appointment->assigned_to_id !== $user->id) {
+        abort(403, 'You can only update appointments assigned to you.');
     }
 
-    public function assign(Request $request, Appointment $appointment): JsonResponse
-    {
-        $this->ensureStaffUser($request);
+    $validated = $request->validate([
+        'status' => ['required', 'in:pending,scheduled,completed,cancelled'],
+    ]);
 
-        if (
-            $appointment->assigned_to_id !== null &&
-            $appointment->assigned_to_id !== $request->user()->id
-        ) {
-            abort(409, 'This appointment has already been claimed by another staff member.');
-        }
+    $oldStatus = $appointment->status;
+    $oldAssignedToId = $appointment->assigned_to_id;
 
-        if (! in_array($appointment->status, ['pending', 'scheduled'], true)) {
-            abort(422, 'Only pending or scheduled appointments can be claimed.');
-        }
+    $updates = [
+        'status' => $validated['status'],
+        'cancelled_at' => $validated['status'] === 'cancelled' ? now() : null,
+    ];
 
-        $oldStatus = $appointment->status;
-        $oldAssignedToId = $appointment->assigned_to_id;
-
-        $appointment->update([
-            'assigned_to_id' => $request->user()->id,
-            'status' => 'scheduled',
-        ]);
-
-        $freshAppointment = $appointment->fresh();
-
-        $this->recordVisibleActivity(
-            $request,
-            $freshAppointment,
-            'assigned',
-            'Appointment was claimed and scheduled by '.$request->user()->name.'.'
-        );
-
-        AuditLog::record(
-            $request->user(),
-            'appointments',
-            'assignment_updated',
-            "{$request->user()->name} claimed appointment {$freshAppointment->appointment_number}.",
-            $freshAppointment,
-            [
-                'appointment_number' => $freshAppointment->appointment_number,
-                'old_status' => $oldStatus,
-                'new_status' => $freshAppointment->status,
-                'old_assigned_to_id' => $oldAssignedToId,
-                'new_assigned_to_id' => $freshAppointment->assigned_to_id,
-            ],
-            $request
-        );
-
-        broadcast(new AppointmentChanged($freshAppointment, 'assigned'))->toOthers();
-
-        return response()->json([
-            'data' => $freshAppointment->load(['requester:id,name,email,requester_type', 'assignedTo:id,name,email']),
-            'message' => 'Appointment claimed successfully.',
-        ]);
+    // A staff member who schedules or completes an unassigned appointment
+    // becomes its assigned staff member. Super admins assign through assign().
+    if (
+        $user->role === 'staff' &&
+        in_array($validated['status'], ['scheduled', 'completed'], true) &&
+        $appointment->assigned_to_id === null
+    ) {
+        $updates['assigned_to_id'] = $user->id;
     }
+
+    $appointment->update($updates);
+
+    $freshAppointment = $appointment->fresh();
+
+    $this->recordVisibleActivity(
+        $request,
+        $freshAppointment,
+        'status_update',
+        'Appointment status changed to '.$freshAppointment->status.'.'
+    );
+
+    AuditLog::record(
+        $user,
+        'appointments',
+        'status_updated',
+        "{$user->name} changed appointment {$freshAppointment->appointment_number} from {$oldStatus} to {$freshAppointment->status}.",
+        $freshAppointment,
+        [
+            'appointment_number' => $freshAppointment->appointment_number,
+            'old_status' => $oldStatus,
+            'new_status' => $freshAppointment->status,
+            'old_assigned_to_id' => $oldAssignedToId,
+            'new_assigned_to_id' => $freshAppointment->assigned_to_id,
+        ],
+        $request
+    );
+
+    broadcast(new AppointmentChanged($freshAppointment, 'status_updated'))->toOthers();
+
+    return response()->json([
+        'data' => $freshAppointment->load([
+            'requester:id,name,email,requester_type',
+            'assignedTo:id,name,email',
+        ]),
+        'message' => 'Appointment status updated successfully.',
+    ]);
+}
+
+public function assign(Request $request, Appointment $appointment): JsonResponse
+{
+    $this->ensureStaffUser($request);
+
+    $user = $request->user();
+    $isSuperAdmin = $user->role === 'super_admin';
+
+    $validated = $request->validate([
+        'assigned_to_id' => ['nullable', 'integer', 'exists:users,id'],
+    ]);
+
+    $hasAssignedToId = $request->has('assigned_to_id');
+
+    if ($isSuperAdmin && ! $hasAssignedToId) {
+        abort(422, 'Choose a staff member before updating the appointment assignment.');
+    }
+
+    if (
+        ! $isSuperAdmin &&
+        $hasAssignedToId &&
+        ($validated['assigned_to_id'] ?? null) !== $user->id
+    ) {
+        abort(403, 'Staff members can only claim appointments for themselves.');
+    }
+
+    if (! in_array($appointment->status, ['pending', 'scheduled'], true)) {
+        abort(422, 'Only pending or scheduled appointments can be assigned.');
+    }
+
+    $oldStatus = $appointment->status;
+    $oldAssignedToId = $appointment->assigned_to_id;
+
+    $assignedToId = $isSuperAdmin
+        ? ($validated['assigned_to_id'] ?? null)
+        : $user->id;
+
+    $assignedTo = $assignedToId
+    ? User::find($assignedToId)
+    : null;
+
+    if ($assignedTo !== null) {
+        $this->ensureAssignableStaff($assignedTo);
+    }
+
+    $updates = [
+        'assigned_to_id' => $assignedToId,
+    ];
+
+    if ($assignedToId === null) {
+        $updates['status'] = 'pending';
+        $updates['cancelled_at'] = null;
+    } elseif ($appointment->status === 'pending') {
+        $updates['status'] = 'scheduled';
+    }
+
+    $appointment->update($updates);
+
+    $freshAppointment = $appointment->fresh();
+
+    $activityMessage = $assignedTo
+        ? 'Appointment was assigned to '.$assignedTo->name.'.'
+        : 'Appointment was returned to the unassigned queue.';
+
+    $this->recordVisibleActivity(
+        $request,
+        $freshAppointment,
+        $assignedTo ? 'assigned' : 'unassigned',
+        $activityMessage
+    );
+
+    AuditLog::record(
+        $user,
+        'appointments',
+        'assignment_updated',
+        "{$user->name} updated the assignment for appointment {$freshAppointment->appointment_number}.",
+        $freshAppointment,
+        [
+            'appointment_number' => $freshAppointment->appointment_number,
+            'old_status' => $oldStatus,
+            'new_status' => $freshAppointment->status,
+            'old_assigned_to_id' => $oldAssignedToId,
+            'new_assigned_to_id' => $freshAppointment->assigned_to_id,
+            'assigned_to_name' => $assignedTo?->name,
+        ],
+        $request
+    );
+
+    broadcast(new AppointmentChanged($freshAppointment, 'assignment_updated'))->toOthers();
+
+    return response()->json([
+        'data' => $freshAppointment->load([
+            'requester:id,name,email,requester_type',
+            'assignedTo:id,name,email',
+        ]),
+        'message' => $assignedTo
+            ? 'Appointment assignment updated successfully.'
+            : 'Appointment returned to the queue successfully.',
+    ]);
+}
 
     private function recordVisibleActivity(
         Request $request,
@@ -273,10 +335,39 @@ class AppointmentController extends Controller
         return $number;
     }
 
+   private function ensureAssignableStaff(User $staff): void
+{
+    if ($staff->role !== 'staff') {
+        abort(422, 'Appointments can only be assigned to staff accounts.');
+    }
+
+    $isOnDuty = StaffShift::query()
+        ->where('user_id', $staff->id)
+        ->whereNull('ended_at')
+        ->exists();
+
+    if (! $isOnDuty) {
+        abort(422, 'Appointments can only be assigned to staff who are currently on duty.');
+    }
+}
+
     private function ensureStaffUser(Request $request): void
     {
-        if (! in_array($request->user()->role, ['staff', 'super_admin'], true)) {
+        $user = $request->user();
+
+        if (! in_array($user->role, ['staff', 'super_admin'], true)) {
             abort(403, 'Only staff or super admin users can perform this action.');
+        }
+
+        if ($user->role === 'staff') {
+            $isOnDuty = StaffShift::query()
+                ->where('user_id', $user->id)
+                ->whereNull('ended_at')
+                ->exists();
+
+            if (! $isOnDuty) {
+                abort(403, 'Start your shift before claiming appointments or updating their status.');
+            }
         }
     }
 }

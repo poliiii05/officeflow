@@ -12,6 +12,11 @@ export type SystemSettings = {
   default_ticket_priority: 'low' | 'medium' | 'high' | 'urgent'
   staff_shift_required: boolean
   audit_log_retention: '90' | '180' | '365'
+  // Access control - admin-only, intentionally NOT part of PublicSystemStatus
+  // below since these govern how the super admin manages access, not
+  // something a requester needs to see.
+  requester_access: 'open' | 'registration_required' | 'restricted'
+  session_timeout_minutes: number
 }
 
 export type PublicSystemStatus = Pick<
