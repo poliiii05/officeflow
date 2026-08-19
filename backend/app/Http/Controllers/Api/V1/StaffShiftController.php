@@ -12,15 +12,15 @@ use Illuminate\Http\Request;
 
 class StaffShiftController extends Controller
 {
-        public function index(Request $request): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $this->ensureStaffUser($request);
 
         $validated = $request->validate([
             'page' => ['nullable', 'integer', 'min:1'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-            'date_from' => ['nullable', 'date'],
-            'date_to' => ['nullable', 'date'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ]);
 
         $user = $request->user();
@@ -28,26 +28,19 @@ class StaffShiftController extends Controller
 
         $shifts = StaffShift::query()
             ->where('user_id', $user->id)
-            ->when($validated['date_from'] ?? null, fn ($query, $date) => $query->whereDate('started_at', '>=', $date))
-            ->when($validated['date_to'] ?? null, fn ($query, $date) => $query->whereDate('started_at', '<=', $date))
+            ->when(
+                $validated['date_from'] ?? null,
+                fn ($query, $date) => $query->whereDate('started_at', '>=', $date)
+            )
+            ->when(
+                $validated['date_to'] ?? null,
+                fn ($query, $date) => $query->whereDate('started_at', '<=', $date)
+            )
             ->latest('started_at')
             ->paginate($perPage);
 
         $items = $shifts->getCollection()->map(function (StaffShift $shift) use ($user) {
-            $startedAt = $shift->started_at;
-            $endedAt = $shift->ended_at ?? now();
-
-            $completedTickets = Ticket::query()
-                ->where('assigned_to_id', $user->id)
-                ->whereIn('status', ['resolved', 'closed'])
-                ->whereBetween('updated_at', [$startedAt, $endedAt])
-                ->count();
-
-            $completedAppointments = Appointment::query()
-                ->where('assigned_to_id', $user->id)
-                ->where('status', 'completed')
-                ->whereBetween('updated_at', [$startedAt, $endedAt])
-                ->count();
+            $summary = $this->completionSummary($shift, $user->id);
 
             return [
                 'id' => $shift->id,
@@ -56,10 +49,10 @@ class StaffShiftController extends Controller
                 'ended_at' => $shift->ended_at,
                 'status' => $shift->status,
                 'end_reason' => $shift->end_reason,
-                'duration_minutes' => $startedAt ? (int) $startedAt->diffInMinutes($endedAt) : 0,
-                'completed_tickets' => $completedTickets,
-                'completed_appointments' => $completedAppointments,
-                'completed_total' => $completedTickets + $completedAppointments,
+                'duration_minutes' => $summary['duration_minutes'],
+                'completed_tickets' => $summary['completed_tickets'],
+                'completed_appointments' => $summary['completed_appointments'],
+                'completed_total' => $summary['completed_total'],
                 'created_at' => $shift->created_at,
                 'updated_at' => $shift->updated_at,
             ];
@@ -95,13 +88,7 @@ class StaffShiftController extends Controller
             ->first();
 
         return response()->json([
-            'data' => [
-                'is_on_duty' => (bool) $activeShift,
-                'can_start_shift' => ! $activeShift && ! $todayShift,
-                'has_shift_today' => (bool) $todayShift,
-                'shift' => $activeShift,
-                'today_shift' => $todayShift,
-            ],
+            'data' => $this->shiftStatePayload($activeShift, $todayShift, $user->id),
         ]);
     }
 
@@ -118,13 +105,7 @@ class StaffShiftController extends Controller
 
         if ($existingShift) {
             return response()->json([
-                'data' => [
-                    'is_on_duty' => true,
-                    'can_start_shift' => false,
-                    'has_shift_today' => true,
-                    'shift' => $existingShift,
-                    'today_shift' => $existingShift,
-                ],
+                'data' => $this->shiftStatePayload($existingShift, $existingShift, $user->id),
                 'message' => 'You are already on duty.',
             ]);
         }
@@ -137,13 +118,7 @@ class StaffShiftController extends Controller
 
         if ($todayShift) {
             return response()->json([
-                'data' => [
-                    'is_on_duty' => false,
-                    'can_start_shift' => false,
-                    'has_shift_today' => true,
-                    'shift' => null,
-                    'today_shift' => $todayShift,
-                ],
+                'data' => $this->shiftStatePayload(null, $todayShift, $user->id),
                 'message' => 'Your shift for today is already recorded.',
             ], 422);
         }
@@ -168,13 +143,7 @@ class StaffShiftController extends Controller
         );
 
         return response()->json([
-            'data' => [
-                'is_on_duty' => true,
-                'can_start_shift' => false,
-                'has_shift_today' => true,
-                'shift' => $shift,
-                'today_shift' => $shift,
-            ],
+            'data' => $this->shiftStatePayload($shift, $shift, $user->id),
             'message' => 'Shift started successfully.',
         ], 201);
     }
@@ -203,23 +172,15 @@ class StaffShiftController extends Controller
                 ->first();
 
             return response()->json([
-                'data' => [
-                    'is_on_duty' => false,
-                    'can_start_shift' => ! $todayShift,
-                    'has_shift_today' => (bool) $todayShift,
-                    'shift' => null,
-                    'today_shift' => $todayShift,
-                ],
+                'data' => $this->shiftStatePayload(null, $todayShift, $user->id),
                 'message' => 'No active shift found.',
             ]);
         }
 
-        $endReason = $validated['end_reason'] ?? 'end_shift';
-
         $shift->update([
             'ended_at' => now(),
             'status' => 'ended',
-            'end_reason' => $endReason,
+            'end_reason' => $validated['end_reason'] ?? 'end_shift',
         ]);
 
         $freshShift = $shift->fresh();
@@ -240,15 +201,53 @@ class StaffShiftController extends Controller
         );
 
         return response()->json([
-            'data' => [
-                'is_on_duty' => false,
-                'can_start_shift' => false,
-                'has_shift_today' => true,
-                'shift' => null,
-                'today_shift' => $freshShift,
-            ],
+            'data' => $this->shiftStatePayload(null, $freshShift, $user->id),
             'message' => 'Shift ended successfully.',
         ]);
+    }
+
+    private function shiftStatePayload(
+        ?StaffShift $activeShift,
+        ?StaffShift $todayShift,
+        int $userId
+    ): array {
+        return [
+            'is_on_duty' => (bool) $activeShift,
+            'can_start_shift' => ! $activeShift && ! $todayShift,
+            'has_shift_today' => (bool) $todayShift,
+            'shift' => $activeShift,
+            'today_shift' => $todayShift,
+            'today_summary' => $this->completionSummary($todayShift, $userId),
+        ];
+    }
+
+    private function completionSummary(?StaffShift $shift, int $userId): ?array
+    {
+        if (! $shift || ! $shift->started_at) {
+            return null;
+        }
+
+        $startedAt = $shift->started_at;
+        $endedAt = $shift->ended_at ?? now();
+
+        $completedTickets = Ticket::query()
+            ->where('assigned_to_id', $userId)
+            ->whereIn('status', ['resolved', 'closed'])
+            ->whereBetween('updated_at', [$startedAt, $endedAt])
+            ->count();
+
+        $completedAppointments = Appointment::query()
+            ->where('assigned_to_id', $userId)
+            ->where('status', 'completed')
+            ->whereBetween('updated_at', [$startedAt, $endedAt])
+            ->count();
+
+        return [
+            'duration_minutes' => (int) $startedAt->diffInMinutes($endedAt),
+            'completed_tickets' => $completedTickets,
+            'completed_appointments' => $completedAppointments,
+            'completed_total' => $completedTickets + $completedAppointments,
+        ];
     }
 
     private function ensureStaffUser(Request $request): void

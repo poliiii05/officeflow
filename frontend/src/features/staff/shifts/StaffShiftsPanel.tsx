@@ -20,7 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { getApiErrorMessage } from '@/features/auth/auth-api'
 import {
   endStaffShift,
@@ -32,6 +31,11 @@ import {
   type StaffShiftHistoryMeta,
   type StaffShiftState,
 } from '@/features/staff/staff-shift-api'
+import {
+  getPresetRange,
+  SubmittedDateFilter,
+  type DatePreset,
+} from '@/features/super-admin/components/SubmittedDateFilter'
 import { cn } from '@/lib/utils'
 
 const emptyMeta: StaffShiftHistoryMeta = {
@@ -47,7 +51,13 @@ const emptyShiftState: StaffShiftState = {
   has_shift_today: false,
   shift: null,
   today_shift: null,
+  today_summary: null,
 }
+
+// Shift history is a "how far back" view, not a calendar-month view, so it
+// uses relative "Last N days" presets (the pattern used by timesheet tools
+// like When I Work / Connecteam) rather than This week / This month.
+const SHIFT_DATE_PRESETS: DatePreset[] = ['all', 'last_7_days', 'last_30_days', 'last_60_days']
 
 const TABLE_COLUMNS = 'grid-cols-[1.1fr_1fr_1fr_1fr_1fr_1.1fr_1fr]'
 const TABLE_MIN_WIDTH = 'min-w-[880px]'
@@ -103,6 +113,7 @@ export function StaffShiftsPanel() {
   const [shifts, setShifts] = useState<StaffShiftHistoryItem[]>([])
   const [meta, setMeta] = useState<StaffShiftHistoryMeta>(emptyMeta)
   const [page, setPage] = useState(1)
+  const [datePreset, setDatePreset] = useState<DatePreset | 'custom'>('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -116,6 +127,11 @@ export function StaffShiftsPanel() {
   const canStartShift = shiftState.can_start_shift && !shiftState.is_on_duty
   const endingPreview = useMemo(() => new Date(nowTick).toISOString(), [nowTick])
 
+  // When today's shift is already closed, the summary cards are showing a
+  // finished session, so label them as the last recorded shift rather than a
+  // live one - avoids reading like a shift is still open.
+  const showingClosedShift = !shiftState.is_on_duty && shiftState.has_shift_today
+
   const statusLabel = shiftState.is_on_duty
     ? 'On duty'
     : shiftState.has_shift_today
@@ -128,13 +144,7 @@ export function StaffShiftsPanel() {
       ? 'Your shift for today is already closed.'
       : 'No shift recorded for today.'
 
-  const completedToday = useMemo(
-    () =>
-      shifts
-        .filter((shift) => formatDate(shift.started_at) === formatDate(new Date().toISOString()))
-        .reduce((total, shift) => total + shift.completed_total, 0),
-    [shifts]
-  )
+ const completedToday = shiftState.today_summary?.completed_total ?? 0
 
   const loadShiftHistory = useCallback(async () => {
     try {
@@ -160,10 +170,6 @@ export function StaffShiftsPanel() {
   }, [dateFrom, dateTo, page])
 
   useEffect(() => {
-    setPage(1)
-  }, [dateFrom, dateTo])
-
-  useEffect(() => {
     void loadShiftHistory()
   }, [loadShiftHistory])
 
@@ -176,6 +182,38 @@ export function StaffShiftsPanel() {
 
     return () => window.clearInterval(timer)
   }, [shiftState.is_on_duty])
+
+  function handlePresetChange(preset: DatePreset) {
+    const range = getPresetRange(preset)
+
+    setPage(1)
+    setDatePreset(preset)
+    setDateFrom(range.from)
+    setDateTo(range.to)
+  }
+
+  function handleDateFromChange(value: string) {
+    setPage(1)
+    setDatePreset('custom')
+    setDateFrom(value)
+
+    if (dateTo && value && value > dateTo) {
+      setDateTo('')
+    }
+  }
+
+  function handleDateToChange(value: string) {
+    setPage(1)
+    setDatePreset('custom')
+    setDateTo(value)
+  }
+
+  function clearDateFilter() {
+    setPage(1)
+    setDatePreset('all')
+    setDateFrom('')
+    setDateTo('')
+  }
 
   async function handleStartShift() {
     if (!canStartShift || isUpdatingShift) return
@@ -293,6 +331,16 @@ export function StaffShiftsPanel() {
         </div>
 
         <div className="rounded-lg border bg-white p-5 shadow-sm">
+          {/* Header line clarifies whether these three cards describe a live
+              shift or the last recorded one for the day. */}
+          <p className="mb-4 text-sm font-medium text-muted-foreground">
+            {shiftState.is_on_duty
+              ? 'Current shift'
+              : showingClosedShift
+                ? 'Last recorded shift today'
+                : 'Latest shift'}
+          </p>
+
           <div className="grid gap-4 md:grid-cols-3">
             <SummaryCard
               icon={CalendarClock}
@@ -334,22 +382,16 @@ export function StaffShiftsPanel() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:w-auto sm:min-w-[280px]">
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
-              aria-label="Date from"
-              className="min-w-0 bg-white"
-            />
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(event) => setDateTo(event.target.value)}
-              aria-label="Date to"
-              className="min-w-0 bg-white"
-            />
-          </div>
+          <SubmittedDateFilter
+            presets={SHIFT_DATE_PRESETS}
+            activePreset={datePreset}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onPresetChange={handlePresetChange}
+            onDateFromChange={handleDateFromChange}
+            onDateToChange={handleDateToChange}
+            onClear={clearDateFilter}
+          />
         </div>
 
         <div className="overflow-x-auto">

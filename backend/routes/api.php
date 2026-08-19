@@ -17,6 +17,8 @@
     use App\Http\Controllers\Api\V1\SystemStatusController;
     use App\Http\Controllers\Api\V1\SuperAdmin\SystemSettingController;
     use App\Http\Controllers\Api\V1\AccountController;
+    use App\Http\Controllers\Api\V1\StaffQueueController;
+    use App\Http\Controllers\Api\V1\StaffRecordController;
     use App\Http\Controllers\Api\V1\StaffAnalyticsController;
     use App\Models\User;
     use Illuminate\Auth\Events\Verified;
@@ -99,16 +101,22 @@
                 ->only(['index', 'store', 'show'])
                 ->middleware('throttle:180,1');
             
-            Route::get('/staff/shift/current', [StaffShiftController::class, 'current'])
+            Route::get('/staff/shifts/current', [StaffShiftController::class, 'current'])
                 ->middleware('throttle:180,1');
 
-            Route::post('/staff/shift/start', [StaffShiftController::class, 'start'])
+            Route::post('/staff/shifts/start', [StaffShiftController::class, 'start'])
                 ->middleware('throttle:60,1');
 
-            Route::post('/staff/shift/end', [StaffShiftController::class, 'end'])
+            Route::post('/staff/shifts/end', [StaffShiftController::class, 'end'])
                 ->middleware('throttle:60,1');
             
             Route::get('/staff/overview', [StaffDashboardController::class, 'overview'])
+            ->middleware('throttle:180,1');
+
+            Route::get('/staff/queue', [StaffQueueController::class, 'index'])
+            ->middleware('throttle:180,1');
+
+            Route::get('/staff/records', [StaffRecordController::class, 'index'])
             ->middleware('throttle:180,1');
 
             Route::get('/tickets/{ticket}/activities', [TicketActivityController::class, 'index'])

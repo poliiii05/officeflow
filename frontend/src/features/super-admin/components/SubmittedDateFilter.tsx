@@ -5,7 +5,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-export type DatePreset = 'all' | 'today' | 'this_week' | 'this_month' | 'overdue'
+export type DatePreset =
+  | 'all'
+  | 'today'
+  | 'this_week'
+  | 'this_month'
+  | 'overdue'
+  | 'last_7_days'
+  | 'last_30_days'
+  | 'last_60_days'
 
 const PRESET_LABELS: Record<DatePreset, string> = {
   all: 'All',
@@ -13,6 +21,9 @@ const PRESET_LABELS: Record<DatePreset, string> = {
   this_week: 'This week',
   this_month: 'This month',
   overdue: 'Overdue',
+  last_7_days: 'Last 7 days',
+  last_30_days: 'Last 30 days',
+  last_60_days: 'Last 60 days',
 }
 
 function toIsoDate(date: Date) {
@@ -60,6 +71,20 @@ export function getPresetRange(preset: DatePreset): { from: string; to: string }
       const yesterday = new Date(today)
       yesterday.setDate(today.getDate() - 1)
       return { from: '', to: toIsoDate(yesterday) }
+    }
+    case 'last_7_days':
+    case 'last_30_days':
+    case 'last_60_days': {
+      // "Last N days" includes today, so a 7-day window spans today minus 6
+      // through today - matches how most timesheet tools count it.
+      const spans: Record<string, number> = {
+        last_7_days: 7,
+        last_30_days: 30,
+        last_60_days: 60,
+      }
+      const start = new Date(today)
+      start.setDate(today.getDate() - (spans[preset] - 1))
+      return { from: toIsoDate(start), to: todayIso }
     }
     case 'all':
     default:

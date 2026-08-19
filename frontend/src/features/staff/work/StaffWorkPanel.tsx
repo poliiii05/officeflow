@@ -43,13 +43,16 @@ export function StaffWorkPanel() {
   const [appointmentPage, setAppointmentPage] = useState(1)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+
   const [shiftState, setShiftState] = useState<StaffShiftState>({
-    is_on_duty: false,
-    can_start_shift: true,
-    has_shift_today: false,
-    shift: null,
-    today_shift: null,
-  })
+  is_on_duty: false,
+  can_start_shift: true,
+  has_shift_today: false,
+  shift: null,
+  today_shift: null,
+  today_summary: null,
+})
+
   const [isLoading, setIsLoading] = useState(true)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const [updatingKey, setUpdatingKey] = useState<string | null>(null)

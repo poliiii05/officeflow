@@ -9,7 +9,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getApiErrorMessage } from '@/features/auth/auth-api'
 import { StaffProductivityChart } from '@/features/staff/dashboard/StaffProductivityChart'
-import { getStaffOverview, type StaffDashboardTotals } from '@/features/staff/staff-dashboard-api'
+import {
+  getStaffOverview,
+  type StaffDashboardTotals,
+} from '@/features/staff/staff-dashboard-api'
 import { echo } from '@/lib/echo'
 import { cn } from '@/lib/utils'
 
@@ -29,23 +32,26 @@ export function StaffDashboardPanel() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const loadDashboard = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (!silent) setIsLoading(true)
+  const loadDashboard = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) setIsLoading(true)
 
-    try {
-      const overviewResponse = await getStaffOverview({
-        view: 'mine',
-        per_page: 1,
-      })
+      try {
+        const overviewResponse = await getStaffOverview({
+          view: 'mine',
+          per_page: 1,
+        })
 
-      setTotals(overviewResponse.data.totals)
-      setError('')
-    } catch (error) {
-      setError(getApiErrorMessage(error, 'Unable to load staff dashboard.'))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+        setTotals(overviewResponse.data.totals)
+        setError('')
+      } catch (error) {
+        setError(getApiErrorMessage(error, 'Unable to load staff dashboard.'))
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    []
+  )
 
   const loadDashboardRef = useRef(loadDashboard)
 
@@ -86,9 +92,13 @@ export function StaffDashboardPanel() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={Inbox}
-          label="Queuing"
+          label="Queue waiting"
           value={totals.queueTotal}
-          description={`${totals.unassignedTickets} ticket, ${totals.pendingAppointments} appointments waiting.`}
+          description={`${totals.unassignedTickets} ${
+            totals.unassignedTickets === 1 ? 'ticket' : 'tickets'
+          }, ${totals.pendingAppointments} ${
+            totals.pendingAppointments === 1 ? 'appointment' : 'appointments'
+          } waiting.`}
           tone="violet"
           isLoading={isLoading}
         />
@@ -97,7 +107,11 @@ export function StaffDashboardPanel() {
           icon={ListChecks}
           label="My work"
           value={totals.myWorkTotal}
-          description={`${totals.myActiveTickets} tickets, ${totals.myActiveAppointments} appointments assigned to you.`}
+          description={`${totals.myActiveTickets} ${
+            totals.myActiveTickets === 1 ? 'ticket' : 'tickets'
+          }, ${totals.myActiveAppointments} ${
+            totals.myActiveAppointments === 1 ? 'appointment' : 'appointments'
+          } assigned to you.`}
           tone="sky"
           isLoading={isLoading}
         />
@@ -106,7 +120,7 @@ export function StaffDashboardPanel() {
           icon={CheckCircle2}
           label="Resolved today"
           value={totals.resolvedToday}
-          description="Completed by staff today."
+          description="Completed requests assigned to staff today."
           tone="emerald"
           isLoading={isLoading}
         />
@@ -115,7 +129,7 @@ export function StaffDashboardPanel() {
           icon={Database}
           label="All records"
           value={totals.allRecords}
-          description="Tickets and appointments."
+          description="Tickets and appointments available to your staff role."
           tone="slate"
           isLoading={isLoading}
         />
@@ -156,7 +170,7 @@ function StatCard({
           <p className="mt-3 text-3xl font-semibold text-slate-950">
             {isLoading ? '...' : value}
           </p>
-          <p className="mt-2 text-sm">{description}</p>
+          <p className="mt-2 text-sm leading-6">{description}</p>
         </div>
 
         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white/70">

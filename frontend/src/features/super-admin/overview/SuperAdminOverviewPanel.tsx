@@ -201,7 +201,7 @@ export function SuperAdminOverviewPanel() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
-        <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <section className="overflow-x-hidden rounded-lg border bg-white shadow-sm">
           <div className="flex flex-col gap-4 border-b bg-slate-50 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
               <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
@@ -224,7 +224,7 @@ export function SuperAdminOverviewPanel() {
             </Link>
           </div>
 
-          <div className="hidden grid-cols-[minmax(0,1.45fr)_minmax(82px,0.5fr)_64px_64px_minmax(82px,0.55fr)] gap-3 border-b bg-slate-50 px-5 py-3 text-xs font-semibold uppercase text-muted-foreground md:grid">
+          <div className="hidden grid-cols-[minmax(0,1.75fr)_minmax(72px,0.65fr)_minmax(54px,0.4fr)_minmax(54px,0.4fr)_minmax(72px,0.65fr)] gap-2 border-b bg-slate-50 px-5 py-3 text-xs font-semibold uppercase text-muted-foreground md:grid">
             <span>Staff account</span>
             <span className="text-center">Shift</span>
             <span className="text-center">Tickets</span>
@@ -417,7 +417,7 @@ function SummaryCard({
 
 function StaffWorkloadRow({ staff }: { staff: StaffWorkloadItem }) {
   return (
-    <article className="grid grid-cols-2 gap-x-3 gap-y-4 px-4 py-4 hover:bg-slate-50 md:grid-cols-[minmax(0,1.45fr)_minmax(82px,0.5fr)_64px_64px_minmax(82px,0.55fr)] md:items-center md:px-5">
+    <article className="grid min-w-0 grid-cols-2 gap-x-2 gap-y-4 px-4 py-4 hover:bg-slate-50 md:grid-cols-[minmax(0,1.75fr)_minmax(72px,0.65fr)_minmax(54px,0.4fr)_minmax(54px,0.4fr)_minmax(72px,0.65fr)] md:items-center md:px-5">  
       <div className="col-span-2 flex min-w-0 gap-3 md:col-span-1">
         <Avatar className="size-10 shrink-0">
           <AvatarFallback>{getInitials(staff.name)}</AvatarFallback>

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import {
   CalendarCheck,
   CalendarClock,
+  Eye,
   Hash,
   Layers,
   Mail,
@@ -159,6 +160,7 @@ export function AppointmentDetailsDialog({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       {!hideTrigger ? (
         <DialogTrigger className="inline-flex h-9 min-w-[9rem] shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground">
+          <Eye className="size-4" />
           View details
         </DialogTrigger>
       ) : null}

@@ -74,6 +74,16 @@ export function StaffProductivityChart() {
     }
   }, [])
 
+  const ticketsResolved = productivity?.totals.tickets_resolved ?? 0
+  const appointmentsCompleted = productivity?.totals.appointments_completed ?? 0
+  const totalCompleted = productivity?.totals.completed ?? 0
+
+  const hasCompletedWork =
+    ticketsResolved > 0 ||
+    appointmentsCompleted > 0 ||
+    (productivity?.tickets_resolved ?? []).some((value) => value > 0) ||
+    (productivity?.appointments_completed ?? []).some((value) => value > 0)
+
   const chartData = useMemo(
     () => ({
       labels: productivity?.labels ?? [],
@@ -110,16 +120,22 @@ export function StaffProductivityChart() {
       },
     },
     scales: {
-      x: { grid: { display: false } },
+      x: {
+        grid: {
+          display: false,
+        },
+      },
       y: {
         beginAtZero: true,
-        ticks: { precision: 0 },
+        ticks: {
+          precision: 0,
+        },
       },
     },
   }
 
   return (
-    <section className="rounded-lg border bg-white shadow-sm">
+    <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
       <div className="flex flex-col justify-between gap-3 border-b px-5 py-4 lg:flex-row lg:items-center">
         <div className="flex items-start gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700">
@@ -153,24 +169,44 @@ export function StaffProductivityChart() {
         </div>
       </div>
 
-      <div className="grid gap-4 p-5 xl:grid-cols-[1fr_240px]">
-        <div className="h-64 rounded-lg border bg-slate-50/60 p-4">
-          <Bar data={chartData} options={chartOptions} />
+      <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_240px]">
+        {/* Same pattern as the Super Admin analytics chart: the chart itself
+            always renders (so the grid/axes are visible), and a centered
+            overlay explains an empty state instead of swapping the chart
+            out for placeholder content. */}
+        <div className="relative h-64 rounded-lg border bg-slate-50/60 p-4">
+          {isLoading ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Loading productivity...
+            </div>
+          ) : (
+            <>
+              <Bar data={chartData} options={chartOptions} />
+              {hasCompletedWork ? null : (
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/70 px-4 text-center">
+                  <BarChart3 className="size-8 text-slate-300" />
+                  <p className="text-sm text-muted-foreground">
+                    No completed work in the last {days} days.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-          <Summary label="Tickets resolved" value={productivity?.totals.tickets_resolved ?? 0} tone="sky" />
-          <Summary label="Appointments completed" value={productivity?.totals.appointments_completed ?? 0} tone="emerald" />
-          <Summary label="Total completed" value={productivity?.totals.completed ?? 0} tone="violet" />
+          <Summary label="Tickets resolved" value={ticketsResolved} tone="sky" />
+          <Summary
+            label="Appointments completed"
+            value={appointmentsCompleted}
+            tone="emerald"
+          />
+          <Summary label="Total completed" value={totalCompleted} tone="violet" />
         </div>
       </div>
 
       {error ? (
         <div className="border-t px-5 py-3 text-sm text-destructive">{error}</div>
-      ) : null}
-
-      {isLoading ? (
-        <div className="border-t px-5 py-3 text-xs text-muted-foreground">Loading productivity...</div>
       ) : null}
     </section>
   )

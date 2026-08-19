@@ -1,5 +1,15 @@
 import { api } from '@/lib/api'
 
+type ApiResponse<T> = {
+  data: T
+  message?: string
+}
+
+type PaginatedResponse<T> = {
+  data: T[]
+  meta: StaffShiftHistoryMeta
+}
+
 export type StaffShiftEndReason = 'early_out' | 'end_shift'
 
 export type StaffShift = {
@@ -7,10 +17,21 @@ export type StaffShift = {
   user_id: number
   started_at: string
   ended_at: string | null
-  status: 'active' | 'ended'
   end_reason: StaffShiftEndReason | null
+  status: 'active' | 'ended'
+  completed_tickets: number
+  completed_appointments: number
+  completed_total: number
+  duration_minutes: number
   created_at: string
   updated_at: string
+}
+
+export type StaffShiftSummary = {
+  completed_tickets: number
+  completed_appointments: number
+  completed_total: number
+  duration_minutes: number
 }
 
 export type StaffShiftState = {
@@ -19,14 +40,10 @@ export type StaffShiftState = {
   has_shift_today: boolean
   shift: StaffShift | null
   today_shift: StaffShift | null
+  today_summary: StaffShiftSummary | null
 }
 
-export type StaffShiftHistoryItem = StaffShift & {
-  duration_minutes: number
-  completed_tickets: number
-  completed_appointments: number
-  completed_total: number
-}
+export type StaffShiftHistoryItem = StaffShift
 
 export type StaffShiftHistoryMeta = {
   current_page: number
@@ -35,42 +52,40 @@ export type StaffShiftHistoryMeta = {
   total: number
 }
 
-type StaffShiftResponse = {
-  data: StaffShiftState
-  message?: string
+export type StaffShiftHistoryParams = {
+  page?: number
+  per_page?: number
+  date_from?: string
+  date_to?: string
 }
 
-type StaffShiftHistoryResponse = {
-  data: StaffShiftHistoryItem[]
-  meta: StaffShiftHistoryMeta
-}
-
-export async function getCurrentStaffShift() {
-  const response = await api.get<StaffShiftResponse>('/staff/shift/current')
-  return response.data
-}
-
-export async function startStaffShift() {
-  const response = await api.post<StaffShiftResponse>('/staff/shift/start')
-  return response.data
-}
-
-export async function endStaffShift(endReason: StaffShiftEndReason = 'end_shift') {
-  const response = await api.post<StaffShiftResponse>('/staff/shift/end', {
-    end_reason: endReason,
+export async function getStaffShiftHistory(params: StaffShiftHistoryParams = {}) {
+  const response = await api.get<PaginatedResponse<StaffShiftHistoryItem>>('/staff/shifts', {
+    params,
   })
 
   return response.data
 }
 
-export async function getStaffShiftHistory(params?: {
-  page?: number
-  per_page?: number
-  date_from?: string
-  date_to?: string
-}) {
-  const response = await api.get<StaffShiftHistoryResponse>('/staff/shifts', {
-    params,
+export async function getStaffShifts(params: StaffShiftHistoryParams = {}) {
+  return getStaffShiftHistory(params)
+}
+
+export async function getCurrentStaffShift() {
+  const response = await api.get<ApiResponse<StaffShiftState>>('/staff/shifts/current')
+
+  return response.data
+}
+
+export async function startStaffShift() {
+  const response = await api.post<ApiResponse<StaffShiftState>>('/staff/shifts/start')
+
+  return response.data
+}
+
+export async function endStaffShift(reason: StaffShiftEndReason) {
+  const response = await api.post<ApiResponse<StaffShiftState>>('/staff/shifts/end', {
+    end_reason: reason,
   })
 
   return response.data
