@@ -43,14 +43,19 @@ export function UserSettingsPanel() {
   }
 
   return (
-    <section className="mx-auto grid max-w-5xl items-start gap-5 lg:grid-cols-12">
-      <ProfileSection
-        user={user}
-        onUserUpdated={setUser}
-        className="lg:col-span-7"
-      />
-      <EmailSection user={user} className="lg:col-span-5" />
-      <PasswordSection user={user} className="lg:col-span-12" />
+    <section className="mx-auto max-w-6xl space-y-5">
+      {/* Row 1: Profile (main) + Email (sidebar), stretched to matching
+          height. Same grid ratio the staff and super admin settings pages
+          use, so all three workspaces share one layout. */}
+      <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.85fr)]">
+        <ProfileSection user={user} onUserUpdated={setUser} />
+        <EmailSection user={user} />
+      </div>
+
+      {/* Password flows on its own row so the form has enough width when
+          it's active (non-Google accounts render current/new/confirm
+          fields). Google-managed accounts render a single card here. */}
+      <PasswordSection user={user} />
     </section>
   )
 }
